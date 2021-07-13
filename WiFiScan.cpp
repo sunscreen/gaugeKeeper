@@ -4,6 +4,7 @@
 
 #include <WiFi.h>
 #include <SD.h>
+#include "wifipassword.h"
 
 CAN_device_t CAN_cfg;               // CAN Config
 unsigned long previousMillis = 0;   // will store last time a CAN Message was send
@@ -13,7 +14,7 @@ const int WifiMonInterval = 5000;
 const int rx_queue_size = 10;       // Receive Queue size
 
 const char *ssid = "ASUS";
-const char *password = "oxxx323s";
+//const char *password = "x";
 const char *serverIP="192.168.1.9";
 
 //const IPAddress serverIP(192,168,1,9); //Address to visit
@@ -138,7 +139,7 @@ if (WifiConnected==true && DebugerConnected == true) {
     tx_frame.MsgID = 0x316;
     tx_frame.FIR.B.DLC = 8;
     tx_frame.data.u8[0] |= 1UL << 0;
-    tx_frame.data.u8[0] |= 1UL << 1;;
+    tx_frame.data.u8[0] |= 1UL << 1;
     tx_frame.data.u8[0] |= 1UL << 2;
     tx_frame.data.u8[0] |= 1UL << 3;
     
@@ -153,7 +154,7 @@ if (WifiConnected==true && DebugerConnected == true) {
     tx_frame.data.u8[7] = 0x07;
     ESP32Can.CANWriteFrame(&tx_frame);
    
-    send_debug("Sending Can! pkt\n");
+    send_debug("Sending Can Frame!\n");
     delay(10);
  
 }
@@ -171,24 +172,48 @@ if (WifiConnected==true && DebugerConnected == true) {
     tx_frame.FIR.B.FF = CAN_frame_std;
     tx_frame.MsgID = 0x43F;
     tx_frame.FIR.B.DLC = 8;
-    tx_frame.data.u8[0] = 0x08;
-    tx_frame.data.u8[0] |= 1UL << 0;
-    tx_frame.data.u8[0] |= 1UL << 1;;
-    tx_frame.data.u8[0] |= 1UL << 2;
-    tx_frame.data.u8[0] |= 1UL << 3;
-    
+    tx_frame.data.u8[0] = 0x00;
+    tx_frame.data.u8[0] &= ~(1UL << 0);
+    tx_frame.data.u8[0] &= ~(1UL << 1);
+    tx_frame.data.u8[0] &= ~(1UL << 2);
+    tx_frame.data.u8[0] &= ~(1UL << 3);
+    tx_frame.data.u8[0] &= ~(1UL << 4);
+    tx_frame.data.u8[0] &= ~(1UL << 5);
+    tx_frame.data.u8[0] &= ~(1UL << 6);
+    tx_frame.data.u8[0] &= ~(1UL << 7);
 
     
     tx_frame.data.u8[1] = 0x08;
-    tx_frame.data.u8[2] = 0x09;
-    tx_frame.data.u8[3] = 0x09;
-    tx_frame.data.u8[4] = 0xFB;
-    tx_frame.data.u8[5] = 0x05;
-    tx_frame.data.u8[6] = 0x06;
-    tx_frame.data.u8[7] = 0x07;
+
+    tx_frame.data.u8[2]=0xFF; /*smg gear selector possition */
+    //if (tx_frame.data.u8[2] > 254) {tx_frame.data.u8[2]=0x00;} 
+    /* 0x00 = E */    
+    /* A0 = Bank */        
+    /* 0x20 = Manual */
+    /* 0x40 = Sport */
+    /* 0x60 Blank */
+    /* 0x80 Automatic */
+    
+    tx_frame.data.u8[3] = 0xFF; /* torque reduction 0xFF=None */
+
+
+    tx_frame.data.u8[4] = 0x00; /* output speed */
+    tx_frame.data.u8[5] = 0x80; /* Fault indication */
+
+    tx_frame.data.u8[5] &= ~(1UL << 2); /* TCU TYPE */
+    tx_frame.data.u8[5] &= ~(1UL << 3); /* Transmission oil thermostat switch */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* Gear oil overtemperature switch */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
+
+    tx_frame.data.u8[6] = 0xFF; /* DRIVETRAIN REENFORCEMENT 0xFF=None */
+
+    tx_frame.data.u8[7] = 0x00; /* Gearbox snapshot??*/
+
+
     ESP32Can.CANWriteFrame(&tx_frame);
    
-    send_debug("Sending Can! pkt\n");
+    send_debug("Sending Can Frame!\n");
     delay(10);
  
 }
@@ -352,7 +377,7 @@ void setup()
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false); //Turn off wifi sleep in STA mode to improve response speed
        
-    WiFi.begin(ssid, password);
+    WiFi.begin(ssid, WIFIPASSWORD);
     
     while (WiFi.status() != WL_CONNECTED)
     {
