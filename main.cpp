@@ -144,10 +144,6 @@ void setupSPI_slave() {
     scfg.queue_size=1;
     scfg.mode=0;
     
-    //Serial.begin(115200);
-    //delay(5000);
-    
-    
 
     GPIO.func_in_sel_cfg[SPI_CS_GPIO].sig_in_inv = 1; // CS of Display is Active High
 
@@ -162,8 +158,7 @@ void setupSPI_slave() {
             printf("SPI initialsation success!\n");
             break;
     }
-    //delay(500);
-
+  
 }
 
 void ReadSPISlave(void * param) {
@@ -174,9 +169,6 @@ void ReadSPISlave(void * param) {
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
     GPIO.func_in_sel_cfg[SPI_CS_GPIO].sig_in_inv = 1; // CS of Display is Active High    
-
-//    while (1) {
-    
     
     
         spi_state = spi_slave_transmit(SPI_Controller, &trans,portMAX_DELAY);
@@ -239,7 +231,7 @@ void spi_master_config(void) {
 
 }
 
-// Full buffer DMA transfer
+// Full buffer DMA transfer8
 int32_t spi_dma_transfer_bytes(uint8_t *data, uint16_t size) {
 	esp_err_t trans_result = ESP_OK;
 	spi_transaction_t trans_t;
@@ -267,7 +259,7 @@ int32_t spi_dma_transfer_bytes(uint8_t *data, uint16_t size) {
 
 	return size;
 }
-// Full buffer DMA transfer
+// Full buffer DMA transfer16
 int32_t spi_dma_transfer_bytes16(uint16_t *data, uint16_t size) {
 	esp_err_t trans_result = ESP_OK;
 	spi_transaction_t trans_t;
@@ -353,7 +345,7 @@ void mReadCan() {
           canList[0][8] = rx_frame.data.u8[7];
   
           sendSPICan((void *)&canList[0]);
-  }
+      }
   }
  
  
