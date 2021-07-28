@@ -16,7 +16,7 @@
 #include "wifipassword.h"
 #include "driver/spi_slave.h"
 #include "driver/spi_master.h"
-#include "esp_heap_trace.h"
+
 
 // You'll likely need this on vanilla FreeRTOS
 //#include semphr.h
@@ -29,7 +29,7 @@
 #endif
 
 // Globals
-static SemaphoreHandle_t mutex;
+
 
 #define MASTERDEVICE = true;
 
@@ -46,16 +46,12 @@ static SemaphoreHandle_t mutex;
 
 /* Slave variables */
 #define SPI_Controller HSPI_HOST
-
 #define TLEN 256
-//spi_bus_config_t bcfg;
+
 spi_slave_interface_config_t scfg;
-//DMA_ATTR uint8_t buffer[TLEN];
 esp_err_t spi_state;
+
 /* Slave vars */
-
-
-
 #define SPI_CHANNEL    HSPI_HOST
 #define SPI_CLOCK      20000000 // 20MHz SPI clock
 
@@ -196,12 +192,7 @@ void ReadSPISlave(void * param) {
                 break;
         }
         
-                //if (DebugerConnected == true && WifiConnected == true){
-                client.printf("byte0: 0x%03x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7: 0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7]);
-                //}       
-                //delay(10);                 
-        //vTaskDelay(200);
-  //      }
+        client.printf("byte0: 0x%03x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7: 0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7]);
 }
 // Initialize the SPI2 device in master mode
 void SetupCan() {
@@ -214,7 +205,7 @@ void SetupCan() {
 
 void spi_master_config(void) {
 	// Configuration for the SPI bus
-	buscfg.mosi_io_num=SPI_MOSI_GPIO;
+	  buscfg.mosi_io_num=SPI_MOSI_GPIO;
   	buscfg.miso_io_num=SPI_MISO_GPIO;
     buscfg.sclk_io_num=SPI_CLK_GPIO;
     buscfg.quadhd_io_num=-1;
@@ -309,9 +300,8 @@ int32_t spi_dma_transfer_bytes16(uint16_t *data, uint16_t size) {
 }
 
 void encodeCanValue(const short inval,char *outResponse) {
-outResponse[0] = inval >> 8;
-outResponse[1] = inval & 0xff;
-
+  outResponse[0] = inval >> 8;
+  outResponse[1] = inval & 0xff;
 }
 
 
@@ -321,7 +311,6 @@ void send_debug(const char *mydata) {
     //client.print(mydata);                    //Send data to the server
     client.write(mydata);
   }
-
 }
 
 
@@ -330,8 +319,7 @@ void sendSPICan(void * params) {
         //xSemaphoreGive(mutex);
         uint16_t * bla;
         bla=(uint16_t *)params;
-        
-			  myTxBuffer[0]=bla[0];
+        myTxBuffer[0]=bla[0];
         myTxBuffer[1]=bla[1];
         myTxBuffer[2]=bla[2];
         myTxBuffer[3]=bla[3];
@@ -467,27 +455,27 @@ void ProcessTCP() {
 
 void Coreloop() {
   
-  while (1) { 
-      
-      #ifdef ISMASTER         
-        if (CanReady == true) { mReadCan(); }
+  while (1) {      
+        
+        #ifdef ISMASTER         
+          if (CanReady == true) { mReadCan(); }
         #endif
+        
         #ifdef ISSLAVE 
-        ReadSPISlave(NULL);
+          ReadSPISlave(NULL);
         #endif
 
-      if (WifiConnected == true && DebugerConnected == true) { 
+        if (WifiConnected == true && DebugerConnected == true) { 
         
-        ProcessTCP();         
+          ProcessTCP();         
       
-      }
-      if (!client.connected()) {
-        Serial.println();
-        Serial.println("disconnecting.");
-        client.stop();
-      }
+        }
+        if (!client.connected()) {
+          Serial.println();
+          Serial.println("disconnecting.");
+          client.stop();
+        }
         
-
   }
 delay(500);
 }
@@ -499,7 +487,6 @@ void setup() {
     scanWIFI();
     devConnection();
     
-    
     #ifdef ISMASTER
     spi_master_config();
     SetupCan();        
@@ -510,12 +497,8 @@ void setup() {
     #ifdef ISSLAVE
     setupSPI_slave();    
     #endif
-
-
 }
 
 void loop() {
-
-Coreloop();
-//vTaskDelay(50);
+  Coreloop();
 }
