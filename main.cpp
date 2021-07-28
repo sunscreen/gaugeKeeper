@@ -203,31 +203,28 @@ void SetupCan() {
   
 }
 
-void spi_master_config(void) {
-	// Configuration for the SPI bus
+void spi_master_config(void) {	
 	  buscfg.mosi_io_num=SPI_MOSI_GPIO;
-  	buscfg.miso_io_num=SPI_MISO_GPIO;
+    buscfg.miso_io_num=SPI_MISO_GPIO;
     buscfg.sclk_io_num=SPI_CLK_GPIO;
     buscfg.quadhd_io_num=-1;
     buscfg.quadwp_io_num=-1;
     buscfg.max_transfer_sz=SPI_MAX_DMA_LEN;
-  
-
-	// Configuration for the SPI master interface
-	devcfg.command_bits=0;
-  devcfg.address_bits=0;
-  devcfg.dummy_bits=0;
-  devcfg.mode=SPI_MODE;
-  devcfg.duty_cycle_pos=128;
-  devcfg.cs_ena_pretrans=0;
-  devcfg.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
-  devcfg.clock_speed_hz=SPI_CLOCK;
-  devcfg.spics_io_num=SPI_CS_GPIO;
-  devcfg.queue_size=1;
-  devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
-	// Initialize and enable SPI
-	spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
-	switch (spi_state){
+    // Configuration for the SPI master interface
+	  devcfg.command_bits=0;
+    devcfg.address_bits=0;
+    devcfg.dummy_bits=0;
+    devcfg.mode=SPI_MODE;
+    devcfg.duty_cycle_pos=128;
+    devcfg.cs_ena_pretrans=0;
+    devcfg.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
+    devcfg.clock_speed_hz=SPI_CLOCK;
+    devcfg.spics_io_num=SPI_CS_GPIO;
+    devcfg.queue_size=1;
+    devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
+	  // Initialize and enable SPI
+	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
+	  switch (spi_state){
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
