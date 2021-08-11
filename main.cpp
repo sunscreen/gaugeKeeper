@@ -53,7 +53,8 @@ esp_err_t spi_state;
 
 /* Slave vars */
 #define SPI_CHANNEL    HSPI_HOST
-#define SPI_CLOCK      20000000 // 20MHz SPI clock
+//#define SPI_CLOCK      20000000 // 20MHz SPI clock
+#define SPI_CLOCK      SPI_MASTER_FREQ_20M
 
 /*
  * SPI master modes for ESP32:
@@ -88,9 +89,8 @@ spi_device_interface_config_t devcfg;
 
 
 CAN_device_t CAN_cfg;               // CAN Config
-unsigned long previousMillis = 0;   // will store last time a CAN Message was send
 unsigned long MonWifi_previousMillis=0;
-const int interval = 1000;          // interval at which send CAN Messages (milliseconds)
+
 const int WifiMonInterval = 5000;
 const int rx_queue_size = 1;       // Receive Queue size
 
@@ -134,6 +134,21 @@ CAN_frame_t rx_frame;
 CAN_frame_t tx_frame;
 
 
+byte randnum=0;
+unsigned long cancounter=0x00;
+uint8_t lastgear=0;
+
+long previousMillis = 0;        // will store last time LED was updated
+
+// the follow variables is a long because the time, measured in miliseconds,
+// will quickly become a bigger number than can be stored in an int.
+long interval = 1000;           // interval at which to blink (milliseconds)
+
+uint8_t clutchstatus=0;
+// Globals
+//static SemaphoreHandle_t mutex;
+byte GEAR_INFO_COUNTER= 0x00;
+
 void setupSPI_slave() {
     buscfg.mosi_io_num=SPI_MOSI_GPIO;
     buscfg.miso_io_num=-1;
@@ -163,8 +178,8 @@ void setupSPI_slave() {
 
 void ReadSPISlave(void * param) {
     
-    
     WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
+    //WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
     memset(buffer, 0xAA, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
@@ -184,7 +199,7 @@ void ReadSPISlave(void * param) {
                 break;
         }
         
-        client.printf("byte0: 0x%03x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7: 0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7]);
+        client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
 }
 // Initialize the SPI2 device in master mode
 void SetupCan() {
@@ -213,8 +228,13 @@ void spi_master_config(void) {
     devcfg.clock_speed_hz=SPI_CLOCK;
     devcfg.spics_io_num=SPI_CS_GPIO;
     devcfg.queue_size=1;
+    
     devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
-	  // Initialize and enable SPI
+    
+    #ifdef ISSLAVE 
+    devcfg.flags |= SPI_DEVICE_NO_DUMMY ;
+    #endif
+    // Initialize and enable SPI
 	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
 	  switch (spi_state){
         case ESP_ERR_NO_MEM:
@@ -301,6 +321,138 @@ void send_debug(const char *mydata) {
     client.write(mydata);
   }
 }
+void SendSMG2_EGSCan() {
+//CAN_frame_t tx_frame;
+
+
+if (WifiConnected==true && DebugerConnected == true) { 
+  
+ randnum++;
+    if (randnum>10) {randnum=1;}
+
+    switch(randnum) {
+      case 1:
+      randnum=1;
+      break;
+      case 2:
+      randnum=2;
+      break;
+      case 3: 
+      randnum=3;
+      break;
+      case 4:
+      randnum=4;
+      break;
+      case 5:
+      randnum=9;
+      break;
+      case 6:
+      randnum=10;
+      break;
+      
+    }
+
+   //if (cancounter>254) {cancounter=0;}
+    randnum=10;
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = 0x43F;
+    tx_frame.FIR.B.DLC = 8;
+    tx_frame.data.u8[0] = 10;
+    tx_frame.data.u8[0] &= ~(1UL << 0);
+    tx_frame.data.u8[0] &= ~(1UL << 1);
+    tx_frame.data.u8[0] &= ~(1UL << 2);
+    tx_frame.data.u8[0] &= ~(1UL << 3);
+    tx_frame.data.u8[0] &= ~(1UL << 4);
+    tx_frame.data.u8[0] &= ~(1UL << 5);
+    tx_frame.data.u8[0] &= ~(1UL << 6);
+    tx_frame.data.u8[0] &= ~(1UL << 7);
+
+    tx_frame.data.u8[0] |= 1UL << 5;
+
+    tx_frame.data.u8[1] = randnum;
+
+    tx_frame.data.u8[2]=0x04;
+    tx_frame.data.u8[2] &= ~(1UL << 0);
+    tx_frame.data.u8[2] &= ~(1UL << 1);
+    tx_frame.data.u8[2] &= ~(1UL << 2);
+    tx_frame.data.u8[2] &= ~(1UL << 3);
+    tx_frame.data.u8[2] &= ~(1UL << 4);
+    tx_frame.data.u8[2] &= ~(1UL << 5);
+    tx_frame.data.u8[2] &= ~(1UL << 6);
+    tx_frame.data.u8[2] &= ~(1UL << 7);
+    
+    tx_frame.data.u8[2] |= 1UL << 2;
+    tx_frame.data.u8[2] |= 1UL << 3;
+    tx_frame.data.u8[2] |= 1UL << 4;
+    tx_frame.data.u8[2] |= 1UL << 5;
+    tx_frame.data.u8[2] |= 1UL << 6;
+    tx_frame.data.u8[2] |= 1UL << 7;
+
+ 
+
+
+//    tx_frame.data.u8[2]=(byte)( (tx_frame.data.u8[2] & 0xF0) | 0x06);
+    //0x01 = Display off
+    //0x01 = Neutal
+    //0x02 = reverse
+    //0x03 = little D
+    //0x04 = Little D
+    //0x05 = Nothing?
+    //0x06 == Sport
+    //0x07 == Sport 
+    //0x08 == nothing
+    //0x11 == N + last segment of drive logic!
+    //0x12 == R + last segment of drive logic!
+
+
+    //if (tx_frame.data.u8[2] > 254) {tx_frame.data.u8[2]=0x00;} 
+    /* 0x00 = E */    
+    /* A0 = Bank */        
+    /* 0x20 = Manual */
+    /* 0x40 = Sport */
+    /* 0x60 Blank */
+    /* 0x80 Automatic */
+
+
+    //tx_frame.data.u8[2] &= ~(1UL << 4);
+    //tx_frame.data.u8[2] &= ~(1UL << 5);
+    //tx_frame.data.u8[2] &= ~(1UL << 6);
+    //tx_frame.data.u8[2] &= ~(1UL << 7);
+    
+    
+     uint8_t chksum = cancounter ^ randnum; //XOR
+    chksum = ~chksum;
+    chksum &= (uint8_t)0x0f;
+    chksum =  chksum >> 4;
+    chksum |=  randnum;
+    
+    tx_frame.data.u8[3] = chksum; /* gear checksum */
+
+
+    tx_frame.data.u8[4] = 0x0E; /* Longitudinal Accelleration */
+    
+    tx_frame.data.u8[5] = 0x00; /* Fault indication */
+
+    tx_frame.data.u8[5] &= ~(1UL << 2); /* TCU TYPE */
+    tx_frame.data.u8[5] &= ~(1UL << 3); /* Transmission oil thermostat switch */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* Gear oil overtemperature switch */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
+    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
+
+    tx_frame.data.u8[6] = 0xFF; /* DRIVETRAIN REENFORCEMENT 0xFF=None */
+
+    tx_frame.data.u8[7] = 0xFF; /* Gearbox snapshot??*/
+
+
+    ESP32Can.CANWriteFrame(&tx_frame);
+    cancounter++;     
+    //send_debug("Sending Can Frame!\n");
+    
+ 
+}
+
+
+}
 
 
 void sendSPICan(void * params) {
@@ -317,13 +469,29 @@ void sendSPICan(void * params) {
         myTxBuffer[6]=bla[6];
         myTxBuffer[7]=bla[7];   
         myTxBuffer[8]=bla[8];   
-        spi_dma_transfer_bytes16(myTxBuffer,8 * 16);
+        spi_dma_transfer_bytes16(myTxBuffer,10);
         
         //vTaskDelay(50 / portTICK_PERIOD_MS);        
         //vTaskDelete(NULL);
 }
 
 
+void msendCan(void * inbuf) {
+        uint16_t * spibuf;
+        spibuf = (uint16_t *)inbuf;
+        tx_frame.FIR.B.DLC=8;
+        tx_frame.FIR.B.FF=CAN_frame_std;
+        tx_frame.MsgID=spibuf[0];
+        tx_frame.data.u8[0]=spibuf[1];
+        tx_frame.data.u8[1]=spibuf[2];
+        tx_frame.data.u8[2]=spibuf[3];
+        tx_frame.data.u8[3]=spibuf[4];
+        tx_frame.data.u8[4]=spibuf[5];
+        tx_frame.data.u8[5]=spibuf[6];
+        tx_frame.data.u8[6]=spibuf[7];
+        tx_frame.data.u8[7]=spibuf[8];
+        ESP32Can.CANWriteFrame(&tx_frame);
+}
 
 void mReadCan() {
   //unsigned long currentMillis = millis();
@@ -342,8 +510,7 @@ void mReadCan() {
           canList[0][5] = rx_frame.data.u8[4];
           canList[0][6] = rx_frame.data.u8[5];
           canList[0][7] = rx_frame.data.u8[6];
-          canList[0][8] = rx_frame.data.u8[7];
-  
+          canList[0][8] = rx_frame.data.u8[7]; 
           sendSPICan((void *)&canList[0]);
       }
   }
@@ -351,6 +518,222 @@ void mReadCan() {
  
 }
 
+void SendRpmCan() {
+CAN_frame_t tx_frame;
+
+
+if (WifiConnected==true && DebugerConnected == true) { 
+  
+   
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = 0x316;
+    tx_frame.FIR.B.DLC = 8;
+    tx_frame.data.u8[0] |= 1UL << 0;
+    tx_frame.data.u8[0] |= 1UL << 1;
+    tx_frame.data.u8[0] |= 1UL << 2;
+    tx_frame.data.u8[0] |= 1UL << 3;
+    
+
+    tx_frame.data.u8[0] = 0x09;
+    tx_frame.data.u8[1] = 0x09;
+    tx_frame.data.u8[2] = 0x09;
+    tx_frame.data.u8[3] = 0x09;
+    tx_frame.data.u8[4] = 0xFB;
+    tx_frame.data.u8[5] = 0x05;
+    tx_frame.data.u8[6] = 0x06;
+    tx_frame.data.u8[7] = 0x07;
+    ESP32Can.CANWriteFrame(&tx_frame);
+   
+    send_debug("Sending Can Frame!\n");
+    delay(10);
+ 
+}
+
+}
+int randInRange( int min, int max )
+{
+  double scale = 1.0 / (RAND_MAX + 1);
+  double range = max - min + 1;
+  return min + (int) ( rand() * scale * range );
+}
+
+void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte3,byte m_byte4,byte m_byte5,byte m_byte6,byte m_byte7) {
+    CAN_frame_t tx_frame;
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = ARBID;
+    tx_frame.FIR.B.DLC = 8;
+    
+    tx_frame.data.u8[0] = m_byte0;
+    tx_frame.data.u8[1] = m_byte1;
+    tx_frame.data.u8[2] = m_byte2; 
+    tx_frame.data.u8[3] = m_byte3;
+    tx_frame.data.u8[4] = m_byte4;
+    tx_frame.data.u8[5] = m_byte5;
+    tx_frame.data.u8[6] = m_byte6;
+    tx_frame.data.u8[7] = m_byte7;
+
+    ESP32Can.CANWriteFrame(&tx_frame);
+    vTaskDelay(10 / portTICK_RATE_MS);   
+
+}
+void SendEGSCan2( void * params) {
+    byte GEAR_INFO_CHKSM = 0x00;
+    
+    byte GEAR_INFO_START = 0x05;
+    long sentgears=0;
+    CAN_frame_t tx_frame;
+    byte GEAR_INFO = 0x01;
+    int rpm=1000;
+    while (1) {
+    
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = 0x43F;
+    tx_frame.FIR.B.DLC = 8;
+    
+    
+    
+    
+    GEAR_INFO_CHKSM = GEAR_INFO_COUNTER ^ GEAR_INFO;
+    GEAR_INFO_CHKSM = ~ GEAR_INFO_CHKSM;
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM & 0x0F;
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM << 4;
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM | GEAR_INFO;
+    
+    GEAR_INFO_COUNTER ++;
+    GEAR_INFO_COUNTER = GEAR_INFO_COUNTER & 0x0F;
+
+    tx_frame.data.u8[0] = GEAR_INFO_START;
+    
+    //bitSet(tx_frame.data.u8[0],5);
+    
+    bitSet(tx_frame.data.u8[0],3);
+    
+    bitSet(tx_frame.data.u8[0],5);
+    bitSet(tx_frame.data.u8[0],7);
+    bitClear(tx_frame.data.u8[0],6);
+
+
+    
+
+    tx_frame.data.u8[1] = GEAR_INFO;
+    tx_frame.data.u8[2] = 0; 
+    tx_frame.data.u8[3] = GEAR_INFO_CHKSM;
+    tx_frame.data.u8[4] = 0x7E;
+    tx_frame.data.u8[5] = 0x84;
+    tx_frame.data.u8[6] = 0xE4;
+    tx_frame.data.u8[7] = 0xFE;
+
+    //SendRpmCan();
+    //sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x00);
+   if (sentgears < 128) {
+    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+    //sendARBID(0x329,0x80,0x32, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+    sentgears++;
+    }
+    if (sentgears >= 128) {
+    sentgears=0;
+    
+    }
+    
+    ESP32Can.CANWriteFrame(&tx_frame);
+    vTaskDelay(18 / portTICK_RATE_MS);    
+    
+    sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
+    rpm=rpm+200;
+    if (rpm >9999) {
+      rpm=1000;
+      GEAR_INFO++;
+      if (GEAR_INFO > 8) {GEAR_INFO=1;}
+      if (GEAR_INFO == 5 || GEAR_INFO == 6 || GEAR_INFO == 7 || GEAR_INFO == 8) {
+        GEAR_INFO=9;
+
+      }  
+      
+    }
+
+    int number = rpm / 1000;
+		byte txdata;
+    number = number * 16;
+		// Set Bits according to Bitmap
+		for(int n = 4; n < 7; n++){
+			int bit = (number >> n) & 1U;
+			txdata ^= (-bit ^ txdata) & (1UL << n);
+		}
+
+    sendARBID(0x316,0x0D, 0x00, 0xAE, txdata, 0x56, 0x34, 0x00,0x00);
+
+    //sendARBID(0x1F0,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
+    sendARBID(0x1F3,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
+    //sendARBID(0x1F5,0x42,0x80,0x00,0x00,0x80,0x11,0x09,0x08);
+    sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x80);
+    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);
+    
+    //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
+    }
+}
+
+void SendEGSCan(void * param) {
+
+    while (1) {
+    CAN_frame_t tx_frame;
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = 0x43F;
+    tx_frame.FIR.B.DLC = 8;
+    //tx_frame.FIR.B.RTR=CAN_RTR;
+    //tx_frame.data.u8[0] =  random(255); /* random desired gear (0x0 we want nuetral) while LVS = 0 */
+    randnum=0x05;
+
+    tx_frame.data.u8[0]= randnum;
+
+    bitWrite(tx_frame.data.u8[0],3,1); /*LVS = 0*/
+    //bitWrite(tx_frame.data.u8[0],4,0); /*LVS = 0*/
+    //bitWrite(tx_frame.data.u8[0],5,1); /*LVS = 0*/
+    
+  
+    tx_frame.data.u8[1] = randnum;
+    
+    
+    tx_frame.data.u8[2]=0xA0; /* some of the bits in this control the small drive logic icons.. other random in byte0 makes it flash */
+                                /* 0x20 - 0xA0 DRIVE LOGIC SCREENS INC DSP EXTRA FRAME*/
+
+    bitWrite(tx_frame.data.u8[2],0,0); /*GEAR SEL POSITION= 1*/                                
+    
+    uint8_t CHKSM_GEAR_INFO = 0x00;
+    CHKSM_GEAR_INFO = cancounter^randnum;
+    CHKSM_GEAR_INFO = ~CHKSM_GEAR_INFO;
+    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO & 0x0F;
+    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO << 4; //<-- 0x4 ?
+    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO | randnum;
+
+    tx_frame.data.u8[3] = CHKSM_GEAR_INFO;
+
+    tx_frame.data.u8[4] = 0x50; /* ACCELEROMETER very light lol*/
+    
+    
+    tx_frame.data.u8[5] = 0x00; /* SMG ERROR STATUS */
+    
+
+    
+    tx_frame.data.u8[6] = 0x00;  /* DRIVE TRAIN REINFORCEMENT */
+
+    tx_frame.data.u8[7] = 0x00;  /* TQ_CLU TORQUE ON CLUTCH */
+
+    // Create mutex before starting tasks
+
+    // Take the mutex
+    
+    ESP32Can.CANWriteFrame(&tx_frame);
+     // Release the mutex so that the creating function can finish
+    
+    cancounter++;
+    //client.printf("going to gear %x checksum is %x\n",randnum,tx_frame.data.u8[3]);
+    
+    //mReadCan();
+    //delay(1);
+    vTaskDelay(10 / portTICK_RATE_MS);
+    }
+    
+}
 
 
 void devConnection() {
@@ -402,7 +785,7 @@ void scanWIFI() {
             //if (netfound ==true ) break;
       }
     Serial.println("Connected!");
-      WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_STA);
     WiFi.setSleep(false); //Turn off wifi sleep in STA mode to improve response speed
        
     WiFi.begin(ssid, WIFIPASSWORD);
@@ -435,6 +818,7 @@ void ProcessTCP() {
                 String line = client.readStringUntil('\n'); //Read data to newline
                 Serial.print("Read data:");
                 Serial.println(line);
+                
                 //client.write(line.c_str()); //Send the received data back
             }
         } else {
@@ -444,50 +828,62 @@ void ProcessTCP() {
 
 void Coreloop() {
   
-  while (1) {      
+    while (1) {      
         
         #ifdef ISMASTER         
           if (CanReady == true) { mReadCan(); }
         #endif
-        
+             
         #ifdef ISSLAVE 
           ReadSPISlave(NULL);
         #endif
 
+        
+
         if (WifiConnected == true && DebugerConnected == true) { 
         
-          ProcessTCP();         
+          #ifdef ISMASTER
+ //         SendSMG2_EGSCan();
+          #endif
+          //ProcessTCP();         
       
-        }
-        if (!client.connected()) {
-          Serial.println();
-          Serial.println("disconnecting.");
-          client.stop();
         }
         
   }
-delay(500);
+delay(10);
 }
 
 void setup() {
-    vTaskDelay(5000);
+    vTaskDelay(2000);
     
     Serial.begin(115200);
-    scanWIFI();
-    devConnection();
+    //scanWIFI();
+    //devConnection();
     
     #ifdef ISMASTER
     spi_master_config();
-    SetupCan();        
-    CanReady=true; 
+    SetupCan();            
     ESP32Can.CANInit();   
+     
+   
+    CanReady=true; 
     #endif
     
     #ifdef ISSLAVE
     setupSPI_slave();    
     #endif
+    xTaskCreatePinnedToCore(
+                    SendEGSCan2,   /* Function to implement the task */
+                    "coreTask", /* Name of the task */
+                    10000,      /* Stack size in words */
+                    NULL,       /* Task input parameter */
+                    2,          /* Priority of the task */
+                    NULL,       /* Task handle. */
+                    0);  /* Core where the task should run */
 }
 
 void loop() {
+ 
   Coreloop();
+
 }
