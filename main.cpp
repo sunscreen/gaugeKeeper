@@ -147,11 +147,11 @@ byte GEAR_INFO_CHKSM = 0x00;
 
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
-unsigned long interval = 20;           // interval at which to blink (milliseconds)
+unsigned long interval = 20;           // interval at which to send 0x43F (milliseconds)
 unsigned long interval_gearchange = 5000;
 
 uint8_t clutchstatus=0;
-// Globals
+
 //static SemaphoreHandle_t mutex;
 byte GEAR_INFO_COUNTER= 0x00;
 byte GEAR_INFO = 0x06;
@@ -328,7 +328,6 @@ void send_debug(const char *mydata) {
     client.write(mydata);
   }
 }
-
 
 void sendSPICan(void * params) {
    // Release the mutex so that the creating function can finish
@@ -551,7 +550,7 @@ void robloop(void *params) {
 
 }
 
-void SendRPM2( void * params) {
+void SendEGSCan2( void * params) {
     byte GEAR_INFO_CHKSM = 0x00;
     
     byte GEAR_INFO_START = 0x05;
@@ -600,14 +599,30 @@ void SendRPM2( void * params) {
 
     //SendRpmCan();
     //sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x00);
-    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-    // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+   sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+   if (sentgears < 128) {
+   // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
     //sendARBID(0x329,0x80,0x32, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+    sentgears++;
+    }
+    if (sentgears >= 128) {
+    sentgears=0;
+    
+    }
+    
+    //ESP32Can.CANWriteFrame(&tx_frame);
+    //vTaskDelay(20 / portTICK_RATE_MS);    
+    //robloop();
 
     sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
     rpm=rpm+200;
     if (rpm >9999) {
       rpm=1000;
+      GEAR_INFO++;
+      if (GEAR_INFO > 8) {GEAR_INFO=1;}
+      if (GEAR_INFO == 5 || GEAR_INFO == 6 || GEAR_INFO == 7 || GEAR_INFO == 8) {
+        GEAR_INFO=9;
+
       }  
       
     }
@@ -622,11 +637,13 @@ void SendRPM2( void * params) {
 		}
 
     sendARBID(0x316,0x0D, 0x00, 0xAE, txdata, 0x56, 0x34, 0x00,0x00);
+
     //sendARBID(0x1F0,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     sendARBID(0x1F3,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     //sendARBID(0x1F5,0x42,0x80,0x00,0x00,0x80,0x11,0x09,0x08);
     sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x80);
-    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);   
+    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);
+    
     //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
     }
 }
@@ -840,20 +857,9 @@ void setup() {
                     2,          /* Priority of the task */
                     NULL,       /* Task handle. */
                     0);  /* Core where the task should run */
-    return;
-    
-    xTaskCreatePinnedToCore(
-                    SendEGSCan2,   /* Function to implement the task */
-                    "coreTask", /* Name of the task */
-                    10000,      /* Stack size in words */
-                    NULL,       /* Task input parameter */
-                    2,          /* Priority of the task */
-                    NULL,       /* Task handle. */
-                    0);  /* Core where the task should run */
 }
 
 void loop() {
- 
-  //Coreloop();
+ //Coreloop();
 gearchange(NULL);
 }
