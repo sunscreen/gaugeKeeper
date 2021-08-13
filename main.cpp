@@ -2,8 +2,8 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <string.h>
-#include <Arduino.h>
+  #include <string.h>
+  #include <Arduino.h>
 #include <SD.h>
 #include <WiFi.h>
 #include "freertos/FreeRTOS.h"
@@ -135,20 +135,27 @@ CAN_frame_t tx_frame;
 
 
 byte randnum=0;
-unsigned long cancounter=0x00;
+uint16_t cancounter=0x00;
 uint8_t lastgear=0;
 
-long previousMillis = 0;        // will store last time LED was updated
+unsigned long previousMillis = 0;
+unsigned long previousMillis_gearchange=0;
+unsigned int simulationgear;
+unsigned int drivelogicpos;
+
+byte GEAR_INFO_CHKSM = 0x00;
 
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
-long interval = 1000;           // interval at which to blink (milliseconds)
+unsigned long interval = 20;           // interval at which to blink (milliseconds)
+unsigned long interval_gearchange = 5000;
 
 uint8_t clutchstatus=0;
 // Globals
 //static SemaphoreHandle_t mutex;
 byte GEAR_INFO_COUNTER= 0x00;
-
+byte GEAR_INFO = 0x06;
+byte GEAR_INFO_DRIVE_LOGIC=0x00;
 void setupSPI_slave() {
     buscfg.mosi_io_num=SPI_MOSI_GPIO;
     buscfg.miso_io_num=-1;
@@ -576,13 +583,113 @@ void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte
     vTaskDelay(10 / portTICK_RATE_MS);   
 
 }
+
+uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10};
+uint8_t drivelogic_matrix[] = {0x00,0x30,0x50,0x70,0x90,0xB0,0xD0};
+void gearchange(void * params) {
+while (1) {
+    unsigned long currentMillis_changegear = millis();
+  if (currentMillis_changegear - previousMillis_gearchange >= interval_gearchange) {
+    
+    // change gear!
+      previousMillis_gearchange = currentMillis_changegear;
+      simulationgear++;
+      drivelogicpos++;
+      GEAR_INFO=gearmatrix[simulationgear];
+      GEAR_INFO_DRIVE_LOGIC=drivelogic_matrix[drivelogicpos];
+      
+      if (drivelogicpos > 6) {
+        drivelogicpos=0;
+
+      }
+      
+
+      if (simulationgear > 5) {
+          simulationgear=0;
+          GEAR_INFO=gearmatrix[simulationgear];
+      }          
+    
+  }  
+vTaskDelay(10 / portTICK_RATE_MS);
+}
+
+}
+
+void robloop(void *params) {
+
+  while (1) {
+
+  unsigned long currentMillis = millis();
+
+  // Send CAN Message
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    
+    CAN_frame_t tx_frame;
+    
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = 0x43F;
+    tx_frame.FIR.B.DLC = 8;
+
+    //Serial.print("GEAR_INFO         0x");   
+    //Serial.println(GEAR_INFO,HEX);
+
+    //Serial.print("GEAR_INFO_COUNTER 0x");
+    //Serial.println(GEAR_INFO_COUNTER,HEX);
+
+    //Serial.print("GEAR_INFO_CHKSM   0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    GEAR_INFO_CHKSM = GEAR_INFO_COUNTER ^ GEAR_INFO;
+    //Serial.print("xor               0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    GEAR_INFO_CHKSM ^= 0xFF;
+    //Serial.print("negate            0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM & 0x0F;
+    //Serial.print("and 1111          0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM << 4;
+    //Serial.print("LSH 4             0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM | GEAR_INFO_COUNTER;
+    //Serial.print("or counter        0x");
+    //Serial.println(GEAR_INFO_CHKSM,HEX);
+    
+    //Serial.println("");
+
+    tx_frame.data.u8[0] = 0x00;
+    bitSet(tx_frame.data.u8[0],5);
+    tx_frame.data.u8[1] = GEAR_INFO;
+    tx_frame.data.u8[2] = GEAR_INFO_DRIVE_LOGIC; 
+    tx_frame.data.u8[3] = GEAR_INFO_CHKSM; 
+    tx_frame.data.u8[4] = 0x00;
+    tx_frame.data.u8[5] = 0x00;
+    tx_frame.data.u8[6] = 0x00;
+    tx_frame.data.u8[7] = 0x00;
+
+    GEAR_INFO_COUNTER ++;
+    GEAR_INFO_COUNTER = GEAR_INFO_COUNTER & 0x0F;
+    
+    ESP32Can.CANWriteFrame(&tx_frame);
+  }
+  vTaskDelay(5);
+  }
+
+
+}
+
 void SendEGSCan2( void * params) {
     byte GEAR_INFO_CHKSM = 0x00;
     
     byte GEAR_INFO_START = 0x05;
     long sentgears=0;
     CAN_frame_t tx_frame;
-    byte GEAR_INFO = 0x01;
+
     int rpm=1000;
     while (1) {
     
@@ -625,8 +732,9 @@ void SendEGSCan2( void * params) {
 
     //SendRpmCan();
     //sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x00);
+   sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
    if (sentgears < 128) {
-    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+   // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
     //sendARBID(0x329,0x80,0x32, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
     sentgears++;
     }
@@ -635,9 +743,10 @@ void SendEGSCan2( void * params) {
     
     }
     
-    ESP32Can.CANWriteFrame(&tx_frame);
-    vTaskDelay(18 / portTICK_RATE_MS);    
-    
+    //ESP32Can.CANWriteFrame(&tx_frame);
+    //vTaskDelay(20 / portTICK_RATE_MS);    
+    //robloop();
+
     sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
     rpm=rpm+200;
     if (rpm >9999) {
@@ -671,6 +780,7 @@ void SendEGSCan2( void * params) {
     //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
     }
 }
+
 
 void SendEGSCan(void * param) {
 
@@ -854,7 +964,7 @@ delay(10);
 }
 
 void setup() {
-    vTaskDelay(2000);
+    vTaskDelay(3000);
     
     Serial.begin(115200);
     //scanWIFI();
@@ -872,6 +982,16 @@ void setup() {
     #ifdef ISSLAVE
     setupSPI_slave();    
     #endif
+   xTaskCreatePinnedToCore(
+                    robloop,   /* Function to implement the task */
+                    "coreTask", /* Name of the task */
+                    10000,      /* Stack size in words */
+                    NULL,       /* Task input parameter */
+                    2,          /* Priority of the task */
+                    NULL,       /* Task handle. */
+                    0);  /* Core where the task should run */
+    return;
+    
     xTaskCreatePinnedToCore(
                     SendEGSCan2,   /* Function to implement the task */
                     "coreTask", /* Name of the task */
@@ -884,6 +1004,6 @@ void setup() {
 
 void loop() {
  
-  Coreloop();
-
+  //Coreloop();
+gearchange(NULL);
 }
