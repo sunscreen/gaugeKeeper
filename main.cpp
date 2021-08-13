@@ -2,8 +2,8 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <stddef.h>
-  #include <string.h>
-  #include <Arduino.h>
+#include <string.h>
+#include <Arduino.h>
 #include <SD.h>
 #include <WiFi.h>
 #include "freertos/FreeRTOS.h"
@@ -328,138 +328,6 @@ void send_debug(const char *mydata) {
     client.write(mydata);
   }
 }
-void SendSMG2_EGSCan() {
-//CAN_frame_t tx_frame;
-
-
-if (WifiConnected==true && DebugerConnected == true) { 
-  
- randnum++;
-    if (randnum>10) {randnum=1;}
-
-    switch(randnum) {
-      case 1:
-      randnum=1;
-      break;
-      case 2:
-      randnum=2;
-      break;
-      case 3: 
-      randnum=3;
-      break;
-      case 4:
-      randnum=4;
-      break;
-      case 5:
-      randnum=9;
-      break;
-      case 6:
-      randnum=10;
-      break;
-      
-    }
-
-   //if (cancounter>254) {cancounter=0;}
-    randnum=10;
-    tx_frame.FIR.B.FF = CAN_frame_std;
-    tx_frame.MsgID = 0x43F;
-    tx_frame.FIR.B.DLC = 8;
-    tx_frame.data.u8[0] = 10;
-    tx_frame.data.u8[0] &= ~(1UL << 0);
-    tx_frame.data.u8[0] &= ~(1UL << 1);
-    tx_frame.data.u8[0] &= ~(1UL << 2);
-    tx_frame.data.u8[0] &= ~(1UL << 3);
-    tx_frame.data.u8[0] &= ~(1UL << 4);
-    tx_frame.data.u8[0] &= ~(1UL << 5);
-    tx_frame.data.u8[0] &= ~(1UL << 6);
-    tx_frame.data.u8[0] &= ~(1UL << 7);
-
-    tx_frame.data.u8[0] |= 1UL << 5;
-
-    tx_frame.data.u8[1] = randnum;
-
-    tx_frame.data.u8[2]=0x04;
-    tx_frame.data.u8[2] &= ~(1UL << 0);
-    tx_frame.data.u8[2] &= ~(1UL << 1);
-    tx_frame.data.u8[2] &= ~(1UL << 2);
-    tx_frame.data.u8[2] &= ~(1UL << 3);
-    tx_frame.data.u8[2] &= ~(1UL << 4);
-    tx_frame.data.u8[2] &= ~(1UL << 5);
-    tx_frame.data.u8[2] &= ~(1UL << 6);
-    tx_frame.data.u8[2] &= ~(1UL << 7);
-    
-    tx_frame.data.u8[2] |= 1UL << 2;
-    tx_frame.data.u8[2] |= 1UL << 3;
-    tx_frame.data.u8[2] |= 1UL << 4;
-    tx_frame.data.u8[2] |= 1UL << 5;
-    tx_frame.data.u8[2] |= 1UL << 6;
-    tx_frame.data.u8[2] |= 1UL << 7;
-
- 
-
-
-//    tx_frame.data.u8[2]=(byte)( (tx_frame.data.u8[2] & 0xF0) | 0x06);
-    //0x01 = Display off
-    //0x01 = Neutal
-    //0x02 = reverse
-    //0x03 = little D
-    //0x04 = Little D
-    //0x05 = Nothing?
-    //0x06 == Sport
-    //0x07 == Sport 
-    //0x08 == nothing
-    //0x11 == N + last segment of drive logic!
-    //0x12 == R + last segment of drive logic!
-
-
-    //if (tx_frame.data.u8[2] > 254) {tx_frame.data.u8[2]=0x00;} 
-    /* 0x00 = E */    
-    /* A0 = Bank */        
-    /* 0x20 = Manual */
-    /* 0x40 = Sport */
-    /* 0x60 Blank */
-    /* 0x80 Automatic */
-
-
-    //tx_frame.data.u8[2] &= ~(1UL << 4);
-    //tx_frame.data.u8[2] &= ~(1UL << 5);
-    //tx_frame.data.u8[2] &= ~(1UL << 6);
-    //tx_frame.data.u8[2] &= ~(1UL << 7);
-    
-    
-     uint8_t chksum = cancounter ^ randnum; //XOR
-    chksum = ~chksum;
-    chksum &= (uint8_t)0x0f;
-    chksum =  chksum >> 4;
-    chksum |=  randnum;
-    
-    tx_frame.data.u8[3] = chksum; /* gear checksum */
-
-
-    tx_frame.data.u8[4] = 0x0E; /* Longitudinal Accelleration */
-    
-    tx_frame.data.u8[5] = 0x00; /* Fault indication */
-
-    tx_frame.data.u8[5] &= ~(1UL << 2); /* TCU TYPE */
-    tx_frame.data.u8[5] &= ~(1UL << 3); /* Transmission oil thermostat switch */
-    tx_frame.data.u8[5] &= ~(1UL << 4); /* Gear oil overtemperature switch */
-    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
-    tx_frame.data.u8[5] &= ~(1UL << 4); /* DTREINF */
-
-    tx_frame.data.u8[6] = 0xFF; /* DRIVETRAIN REENFORCEMENT 0xFF=None */
-
-    tx_frame.data.u8[7] = 0xFF; /* Gearbox snapshot??*/
-
-
-    ESP32Can.CANWriteFrame(&tx_frame);
-    cancounter++;     
-    //send_debug("Sending Can Frame!\n");
-    
- 
-}
-
-
-}
 
 
 void sendSPICan(void * params) {
@@ -683,7 +551,7 @@ void robloop(void *params) {
 
 }
 
-void SendEGSCan2( void * params) {
+void SendRPM2( void * params) {
     byte GEAR_INFO_CHKSM = 0x00;
     
     byte GEAR_INFO_START = 0x05;
@@ -732,30 +600,14 @@ void SendEGSCan2( void * params) {
 
     //SendRpmCan();
     //sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x00);
-   sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-   if (sentgears < 128) {
-   // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
+    // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
     //sendARBID(0x329,0x80,0x32, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-    sentgears++;
-    }
-    if (sentgears >= 128) {
-    sentgears=0;
-    
-    }
-    
-    //ESP32Can.CANWriteFrame(&tx_frame);
-    //vTaskDelay(20 / portTICK_RATE_MS);    
-    //robloop();
 
     sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
     rpm=rpm+200;
     if (rpm >9999) {
       rpm=1000;
-      GEAR_INFO++;
-      if (GEAR_INFO > 8) {GEAR_INFO=1;}
-      if (GEAR_INFO == 5 || GEAR_INFO == 6 || GEAR_INFO == 7 || GEAR_INFO == 8) {
-        GEAR_INFO=9;
-
       }  
       
     }
@@ -770,13 +622,11 @@ void SendEGSCan2( void * params) {
 		}
 
     sendARBID(0x316,0x0D, 0x00, 0xAE, txdata, 0x56, 0x34, 0x00,0x00);
-
     //sendARBID(0x1F0,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     sendARBID(0x1F3,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     //sendARBID(0x1F5,0x42,0x80,0x00,0x00,0x80,0x11,0x09,0x08);
     sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x80);
-    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);
-    
+    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);   
     //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
     }
 }
