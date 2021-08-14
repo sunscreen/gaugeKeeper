@@ -149,6 +149,10 @@ byte GEAR_INFO_COUNTER= 0x00;
 byte GEAR_INFO = 0x06;
 byte GEAR_INFO_DRIVE_LOGIC=0x00;
 
+bool GEAR_STATUS_PARK = true;
+bool GEAR_STATUS_REVERSE = false; 
+
+
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
 unsigned long interval = 20;           // interval at which to send 0x43F (milliseconds)
@@ -426,7 +430,7 @@ uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10};
 
 //uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
 //uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
-uint8_t drivelogic_matrix[] = {0x02,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* REVERSE SPORT NCD MODE*/
+uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* REVERSE SPORT NCD MODE*/
 
 void gearchange(void * params) {
 
@@ -437,6 +441,8 @@ while (1) {
     // change gear!
       previousMillis_gearchange = currentMillis_changegear;
       
+
+
       GEAR_INFO=gearmatrix[simulationgear];
       GEAR_INFO_DRIVE_LOGIC=drivelogic_matrix[drivelogicpos];
       
@@ -450,6 +456,24 @@ while (1) {
           simulationgear=0;
           GEAR_INFO=gearmatrix[simulationgear];
       }          
+      if (GEAR_STATUS_REVERSE == true ) { /* come out reverse */
+        GEAR_STATUS_REVERSE=false;
+        GEAR_INFO=0x06;
+        GEAR_INFO_DRIVE_LOGIC=0x00;
+        simulationgear=0;
+        drivelogicpos=0;
+      } 
+      if (GEAR_STATUS_PARK == true ) { /* come out of park go into reverse */
+        GEAR_STATUS_PARK=false;
+        GEAR_STATUS_REVERSE=true;
+        GEAR_INFO=0x07;
+        GEAR_INFO_DRIVE_LOGIC=0x00;
+        simulationgear=0;
+        drivelogicpos=0;
+      } 
+      
+      
+
       simulationgear++;
       drivelogicpos++;
   }  
@@ -507,13 +531,24 @@ void robloop(void *params) {
 
     tx_frame.data.u8[0] = 0x00;
 
-    if (simulationgear > 1) {
+    if (simulationgear > 1 && GEAR_STATUS_REVERSE == false && GEAR_STATUS_PARK == false) {
       bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     } else {
       bitClear(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     }
-      
-    
+
+
+
+    if (GEAR_STATUS_REVERSE == true) {
+      GEAR_INFO_DRIVE_LOGIC=0x02;
+      GEAR_INFO = 0x07;
+    }
+
+    if (GEAR_STATUS_PARK == true) {
+      GEAR_INFO_DRIVE_LOGIC=0x00;
+      GEAR_INFO=0x00;
+    }
+
     tx_frame.data.u8[1] = GEAR_INFO;
     tx_frame.data.u8[2] = GEAR_INFO_DRIVE_LOGIC; 
     tx_frame.data.u8[3] = GEAR_INFO_CHKSM; 
