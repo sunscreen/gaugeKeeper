@@ -32,6 +32,7 @@
 
 
 #define MASTERDEVICE = true;
+#define WIFI_DEBUGGER = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -92,8 +93,8 @@ spi_device_interface_config_t devcfg;
 CAN_device_t CAN_cfg;               // CAN Config
 unsigned long MonWifi_previousMillis=0;
 
-const int WifiMonInterval = 5000;
-const int rx_queue_size = 1;       // Receive Queue size
+const uint8_t WifiMonInterval = 5000;
+const uint8_t rx_queue_size = 1;       // Receive Queue size
 
 const char *ssid = "ASUS";
 const char *serverIP="192.168.1.10";
@@ -156,7 +157,7 @@ bool GEAR_STATUS_REVERSE = false;
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
 unsigned long interval = 20;           // interval at which to send 0x43F (milliseconds)
-unsigned long interval_gearchange = 5000;
+unsigned long interval_gearchange = 2000;
 
 uint8_t clutchstatus=0;
 
@@ -424,13 +425,13 @@ void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte
     vTaskDelay(10 / portTICK_RATE_MS);   
 
 }
-uint8_t GEAR_INFO_TOPGEAR=6;
-uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10};
+uint8_t GEAR_INFO_TOPGEAR=7;
+uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10,0x07};
 //uint8_t drivelogic_matrix[] = {0x01,0x30,0x50,0x70,0x90,0xB0,0xD0,0x12};
 
 //uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
 //uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
-uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* REVERSE SPORT NCD MODE*/
+uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6,0x02}; /* REVERSE SPORT NCD MODE*/
 
 void gearchange(void * params) {
 
@@ -455,23 +456,7 @@ while (1) {
       if (simulationgear > GEAR_INFO_TOPGEAR) {
           simulationgear=0;
           GEAR_INFO=gearmatrix[simulationgear];
-      }          
-      if (GEAR_STATUS_REVERSE == true ) { /* come out reverse */
-        GEAR_STATUS_REVERSE=false;
-        GEAR_INFO=0x06;
-        GEAR_INFO_DRIVE_LOGIC=0x00;
-        simulationgear=0;
-        drivelogicpos=0;
-      } 
-      if (GEAR_STATUS_PARK == true ) { /* come out of park go into reverse */
-        GEAR_STATUS_PARK=false;
-        GEAR_STATUS_REVERSE=true;
-        GEAR_INFO=0x07;
-        GEAR_INFO_DRIVE_LOGIC=0x00;
-        simulationgear=0;
-        drivelogicpos=0;
-      } 
-      
+      }               
       
 
       simulationgear++;
@@ -531,7 +516,7 @@ void robloop(void *params) {
 
     tx_frame.data.u8[0] = 0x00;
 
-    if (simulationgear > 1 && GEAR_STATUS_REVERSE == false && GEAR_STATUS_PARK == false) {
+    if (simulationgear > 1) {
       bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     } else {
       bitClear(tx_frame.data.u8[0],GEAR_SEL_AUTO);
@@ -539,15 +524,8 @@ void robloop(void *params) {
 
 
 
-    if (GEAR_STATUS_REVERSE == true) {
-      GEAR_INFO_DRIVE_LOGIC=0x02;
-      GEAR_INFO = 0x07;
-    }
+ 
 
-    if (GEAR_STATUS_PARK == true) {
-      GEAR_INFO_DRIVE_LOGIC=0x00;
-      GEAR_INFO=0x00;
-    }
 
     tx_frame.data.u8[1] = GEAR_INFO;
     tx_frame.data.u8[2] = GEAR_INFO_DRIVE_LOGIC; 
@@ -593,7 +571,7 @@ void SendCANRPM2( void * params) {
 		byte txdata;
     number = number * 16;
 		// Set Bits according to Bitmap
-		for(int n = 4; n < 7; n++){
+		for(uint8_t n = 4; n < 7; n++){
 			int bit = (number >> n) & 1U;
 			txdata ^= (-bit ^ txdata) & (1UL << n);
 		}
@@ -644,7 +622,7 @@ void scanWIFI() {
       } else {
             Serial.print(n);
             Serial.println(" networks found");
-            for (int i = 0; i < n; ++i) {
+            for (uint8_t i = 0; i < n; ++i) {
             // Print SSID and RSSI for each network found
             /*Serial.print(i + 1);
             Serial.print(": ");
@@ -730,9 +708,12 @@ void setup() {
     vTaskDelay(3000);
     
     Serial.begin(115200);
-    //scanWIFI();
-    //devConnection();
     
+    #ifdef WIFI_DEBUGGER
+    scanWIFI();
+    devConnection();
+    #endif
+
     #ifdef ISMASTER
     spi_master_config();
     SetupCan();            
@@ -756,6 +737,6 @@ void setup() {
 }
 
 void loop() {
- //Coreloop();
-gearchange(NULL);
+ Coreloop();
+//gearchange(NULL);
 }
