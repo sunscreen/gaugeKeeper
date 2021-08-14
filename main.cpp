@@ -572,7 +572,7 @@ void SendCANRPM2( void * params) {
     number = number * 16;
 		// Set Bits according to Bitmap
 		for(uint8_t n = 4; n < 7; n++){
-			int bit = (number >> n) & 1U;
+			uint8_t bit = (number >> n) & 1U;
 			txdata ^= (-bit ^ txdata) & (1UL << n);
 		}
 
