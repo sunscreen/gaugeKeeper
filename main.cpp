@@ -567,7 +567,7 @@ void SendCANRPM2( void * params) {
       rpm=1000; 
     }
 
-    int number = rpm / 1000;
+    uint8_t number = rpm / 1000;
 		byte txdata;
     number = number * 16;
 		// Set Bits according to Bitmap
