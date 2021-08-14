@@ -615,7 +615,7 @@ void scanWIFI() {
     uint8_t netfound=false;
     while (netfound == false) {
       // WiFi.scanNetworks will return the number of networks found
-      int n = WiFi.scanNetworks();
+      uint8_t n = WiFi.scanNetworks();
       Serial.println("scan done");
       if (n == 0) {
           Serial.println("no networks found");
