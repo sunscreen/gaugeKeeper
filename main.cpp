@@ -137,14 +137,17 @@ CAN_frame_t tx_frame;
 
 byte randnum=0;
 uint16_t cancounter=0x00;
-uint8_t lastgear=0;
+//uint8_t lastgear=0;
 
 unsigned long previousMillis = 0;
 unsigned long previousMillis_gearchange=0;
-unsigned int simulationgear;
-unsigned int drivelogicpos;
+uint8_t simulationgear=0;
+uint8_t drivelogicpos=0;
 
 byte GEAR_INFO_CHKSM = 0x00;
+byte GEAR_INFO_COUNTER= 0x00;
+byte GEAR_INFO = 0x06;
+byte GEAR_INFO_DRIVE_LOGIC=0x00;
 
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
@@ -153,10 +156,7 @@ unsigned long interval_gearchange = 5000;
 
 uint8_t clutchstatus=0;
 
-//static SemaphoreHandle_t mutex;
-byte GEAR_INFO_COUNTER= 0x00;
-byte GEAR_INFO = 0x06;
-byte GEAR_INFO_DRIVE_LOGIC=0x00;
+
 void setupSPI_slave() {
     buscfg.mosi_io_num=SPI_MOSI_GPIO;
     buscfg.miso_io_num=-1;
@@ -425,7 +425,8 @@ uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10};
 //uint8_t drivelogic_matrix[] = {0x01,0x30,0x50,0x70,0x90,0xB0,0xD0,0x12};
 
 //uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
-uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
+//uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
+uint8_t drivelogic_matrix[] = {0x02,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* REVERSE SPORT NCD MODE*/
 
 void gearchange(void * params) {
 
@@ -532,11 +533,11 @@ void robloop(void *params) {
 
 }
 
-void SendEGSRPM2( void * params) {
+void SendCANRPM2( void * params) {
   
     CAN_frame_t tx_frame;
 
-    int rpm=1000;
+    uint8_t rpm=1000;
     while (1) {
     
     tx_frame.FIR.B.FF = CAN_frame_std;
