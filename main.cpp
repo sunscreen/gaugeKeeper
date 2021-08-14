@@ -612,7 +612,7 @@ void devConnection() {
 
 void scanWIFI() {
   Serial.println("scan start");
-    int netfound=false;
+    uint8_t netfound=false;
     while (netfound == false) {
       // WiFi.scanNetworks will return the number of networks found
       int n = WiFi.scanNetworks();
