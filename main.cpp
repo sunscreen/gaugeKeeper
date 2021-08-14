@@ -70,6 +70,7 @@ esp_err_t spi_state;
 #define SPI_MISO_GPIO  GPIO_NUM_19 //
 #define SPI_MOSI_GPIO  GPIO_NUM_23 //
 
+#define GEAR_SEL_AUTO 5
 
 //DMA_ATTR uint16_t myRxBuffer[SPI_MAX_DMA_LEN] = {};
 //DMA_ATTR uint16_t myTxBuffer[SPI_MAX_DMA_LEN] = {};
@@ -392,38 +393,7 @@ void mReadCan() {
  
 }
 
-void SendRpmCan() {
-CAN_frame_t tx_frame;
 
-
-if (WifiConnected==true && DebugerConnected == true) { 
-  
-   
-    tx_frame.FIR.B.FF = CAN_frame_std;
-    tx_frame.MsgID = 0x316;
-    tx_frame.FIR.B.DLC = 8;
-    tx_frame.data.u8[0] |= 1UL << 0;
-    tx_frame.data.u8[0] |= 1UL << 1;
-    tx_frame.data.u8[0] |= 1UL << 2;
-    tx_frame.data.u8[0] |= 1UL << 3;
-    
-
-    tx_frame.data.u8[0] = 0x09;
-    tx_frame.data.u8[1] = 0x09;
-    tx_frame.data.u8[2] = 0x09;
-    tx_frame.data.u8[3] = 0x09;
-    tx_frame.data.u8[4] = 0xFB;
-    tx_frame.data.u8[5] = 0x05;
-    tx_frame.data.u8[6] = 0x06;
-    tx_frame.data.u8[7] = 0x07;
-    ESP32Can.CANWriteFrame(&tx_frame);
-   
-    send_debug("Sending Can Frame!\n");
-    delay(10);
- 
-}
-
-}
 int randInRange( int min, int max )
 {
   double scale = 1.0 / (RAND_MAX + 1);
@@ -450,32 +420,37 @@ void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte
     vTaskDelay(10 / portTICK_RATE_MS);   
 
 }
-
+uint8_t GEAR_INFO_TOPGEAR=6;
 uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10};
-uint8_t drivelogic_matrix[] = {0x00,0x30,0x50,0x70,0x90,0xB0,0xD0};
+//uint8_t drivelogic_matrix[] = {0x01,0x30,0x50,0x70,0x90,0xB0,0xD0,0x12};
+
+//uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
+uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
+
 void gearchange(void * params) {
-while (1) {
+
+while (1) {  
     unsigned long currentMillis_changegear = millis();
   if (currentMillis_changegear - previousMillis_gearchange >= interval_gearchange) {
     
     // change gear!
       previousMillis_gearchange = currentMillis_changegear;
-      simulationgear++;
-      drivelogicpos++;
+      
       GEAR_INFO=gearmatrix[simulationgear];
       GEAR_INFO_DRIVE_LOGIC=drivelogic_matrix[drivelogicpos];
       
-      if (drivelogicpos > 6) {
+      if (drivelogicpos > GEAR_INFO_TOPGEAR) {
         drivelogicpos=0;
-
+        GEAR_INFO_DRIVE_LOGIC=drivelogic_matrix[drivelogicpos];
       }
       
 
-      if (simulationgear > 5) {
+      if (simulationgear > GEAR_INFO_TOPGEAR) {
           simulationgear=0;
           GEAR_INFO=gearmatrix[simulationgear];
       }          
-    
+      simulationgear++;
+      drivelogicpos++;
   }  
 vTaskDelay(10 / portTICK_RATE_MS);
 }
@@ -530,7 +505,14 @@ void robloop(void *params) {
     //Serial.println("");
 
     tx_frame.data.u8[0] = 0x00;
-    bitSet(tx_frame.data.u8[0],5);
+
+    if (simulationgear > 1) {
+      bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
+    } else {
+      bitClear(tx_frame.data.u8[0],GEAR_SEL_AUTO);
+    }
+      
+    
     tx_frame.data.u8[1] = GEAR_INFO;
     tx_frame.data.u8[2] = GEAR_INFO_DRIVE_LOGIC; 
     tx_frame.data.u8[3] = GEAR_INFO_CHKSM; 
@@ -550,11 +532,8 @@ void robloop(void *params) {
 
 }
 
-void SendEGSCan2( void * params) {
-    byte GEAR_INFO_CHKSM = 0x00;
-    
-    byte GEAR_INFO_START = 0x05;
-    long sentgears=0;
+void SendEGSRPM2( void * params) {
+  
     CAN_frame_t tx_frame;
 
     int rpm=1000;
@@ -564,67 +543,14 @@ void SendEGSCan2( void * params) {
     tx_frame.MsgID = 0x43F;
     tx_frame.FIR.B.DLC = 8;
     
-    
-    
-    
-    GEAR_INFO_CHKSM = GEAR_INFO_COUNTER ^ GEAR_INFO;
-    GEAR_INFO_CHKSM = ~ GEAR_INFO_CHKSM;
-    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM & 0x0F;
-    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM << 4;
-    GEAR_INFO_CHKSM = GEAR_INFO_CHKSM | GEAR_INFO;
-    
-    GEAR_INFO_COUNTER ++;
-    GEAR_INFO_COUNTER = GEAR_INFO_COUNTER & 0x0F;
-
-    tx_frame.data.u8[0] = GEAR_INFO_START;
-    
-    //bitSet(tx_frame.data.u8[0],5);
-    
-    bitSet(tx_frame.data.u8[0],3);
-    
-    bitSet(tx_frame.data.u8[0],5);
-    bitSet(tx_frame.data.u8[0],7);
-    bitClear(tx_frame.data.u8[0],6);
-
-
-    
-
-    tx_frame.data.u8[1] = GEAR_INFO;
-    tx_frame.data.u8[2] = 0; 
-    tx_frame.data.u8[3] = GEAR_INFO_CHKSM;
-    tx_frame.data.u8[4] = 0x7E;
-    tx_frame.data.u8[5] = 0x84;
-    tx_frame.data.u8[6] = 0xE4;
-    tx_frame.data.u8[7] = 0xFE;
-
-    //SendRpmCan();
-    //sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x00);
-   sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-   if (sentgears < 128) {
-   // sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-    //sendARBID(0x329,0x80,0x32, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-    sentgears++;
-    }
-    if (sentgears >= 128) {
-    sentgears=0;
-    
-    }
-    
+    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
     //ESP32Can.CANWriteFrame(&tx_frame);
     //vTaskDelay(20 / portTICK_RATE_MS);    
     //robloop();
-
     sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
     rpm=rpm+200;
     if (rpm >9999) {
-      rpm=1000;
-      GEAR_INFO++;
-      if (GEAR_INFO > 8) {GEAR_INFO=1;}
-      if (GEAR_INFO == 5 || GEAR_INFO == 6 || GEAR_INFO == 7 || GEAR_INFO == 8) {
-        GEAR_INFO=9;
-
-      }  
-      
+      rpm=1000; 
     }
 
     int number = rpm / 1000;
@@ -637,79 +563,13 @@ void SendEGSCan2( void * params) {
 		}
 
     sendARBID(0x316,0x0D, 0x00, 0xAE, txdata, 0x56, 0x34, 0x00,0x00);
-
     //sendARBID(0x1F0,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     sendARBID(0x1F3,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
     //sendARBID(0x1F5,0x42,0x80,0x00,0x00,0x80,0x11,0x09,0x08);
     sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x80);
-    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00);
-    
+    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00); 
     //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
     }
-}
-
-
-void SendEGSCan(void * param) {
-
-    while (1) {
-    CAN_frame_t tx_frame;
-    tx_frame.FIR.B.FF = CAN_frame_std;
-    tx_frame.MsgID = 0x43F;
-    tx_frame.FIR.B.DLC = 8;
-    //tx_frame.FIR.B.RTR=CAN_RTR;
-    //tx_frame.data.u8[0] =  random(255); /* random desired gear (0x0 we want nuetral) while LVS = 0 */
-    randnum=0x05;
-
-    tx_frame.data.u8[0]= randnum;
-
-    bitWrite(tx_frame.data.u8[0],3,1); /*LVS = 0*/
-    //bitWrite(tx_frame.data.u8[0],4,0); /*LVS = 0*/
-    //bitWrite(tx_frame.data.u8[0],5,1); /*LVS = 0*/
-    
-  
-    tx_frame.data.u8[1] = randnum;
-    
-    
-    tx_frame.data.u8[2]=0xA0; /* some of the bits in this control the small drive logic icons.. other random in byte0 makes it flash */
-                                /* 0x20 - 0xA0 DRIVE LOGIC SCREENS INC DSP EXTRA FRAME*/
-
-    bitWrite(tx_frame.data.u8[2],0,0); /*GEAR SEL POSITION= 1*/                                
-    
-    uint8_t CHKSM_GEAR_INFO = 0x00;
-    CHKSM_GEAR_INFO = cancounter^randnum;
-    CHKSM_GEAR_INFO = ~CHKSM_GEAR_INFO;
-    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO & 0x0F;
-    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO << 4; //<-- 0x4 ?
-    CHKSM_GEAR_INFO = CHKSM_GEAR_INFO | randnum;
-
-    tx_frame.data.u8[3] = CHKSM_GEAR_INFO;
-
-    tx_frame.data.u8[4] = 0x50; /* ACCELEROMETER very light lol*/
-    
-    
-    tx_frame.data.u8[5] = 0x00; /* SMG ERROR STATUS */
-    
-
-    
-    tx_frame.data.u8[6] = 0x00;  /* DRIVE TRAIN REINFORCEMENT */
-
-    tx_frame.data.u8[7] = 0x00;  /* TQ_CLU TORQUE ON CLUTCH */
-
-    // Create mutex before starting tasks
-
-    // Take the mutex
-    
-    ESP32Can.CANWriteFrame(&tx_frame);
-     // Release the mutex so that the creating function can finish
-    
-    cancounter++;
-    //client.printf("going to gear %x checksum is %x\n",randnum,tx_frame.data.u8[3]);
-    
-    //mReadCan();
-    //delay(1);
-    vTaskDelay(10 / portTICK_RATE_MS);
-    }
-    
 }
 
 
