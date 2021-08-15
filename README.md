@@ -1,8 +1,8 @@
 # gaugeKeeper
 MASTER FUNCTIONS
 -----------------
-READ DME 
-SEND SPI
+#READ DME 
+#SEND SPI
 
 
 SLAVE FUNCTIONS
