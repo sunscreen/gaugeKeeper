@@ -18,9 +18,10 @@
 #include "driver/spi_master.h"
 
 
+#define CAN_DLC 8
+
 // You'll likely need this on vanilla FreeRTOS
 //#include semphr.h
-
 // Use only core 1 for demo purposes
 #if CONFIG_FREERTOS_UNICORE
   static const BaseType_t app_cpu = 0;
@@ -29,10 +30,7 @@
 #endif
 
 // Globals
-
-
 //#define MASTERDEVICE = true;
-
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -214,10 +212,10 @@ void ReadSPISlave(void * param) {
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
-                client.printf("SPI trans failed!\n");
+                //client.printf("SPI trans failed!\n");
                 break;
             case ESP_OK:
-                client.printf("SPI trans success!\n");                                         
+                //client.printf("SPI trans success!\n");                                         
                 break;
         }
         recvframe.MsgID=buffer[0];
@@ -225,11 +223,16 @@ void ReadSPISlave(void * param) {
         recvframe.FIR.B.FF = CAN_frame_std;
         for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
         
+        if (recvframe.MsgID > 4095) {return;}
+
+        if (recvframe.MsgID != 0x43F) {
+          ESP32Can.CANWriteFrame(&recvframe);
+          return;
+        }
+        
+        
         if (buffer[0] == 0x43F) {
-            if (recvframe.data.u8[1] == 0x15 ) {
-              // ENABLE DRIVE BIT
-              GEAR_STATUS_DRIVE=true;
-            }
+            //GEAR_INFO_ACTIVEGEAR=recvframe.data.u8[0];
             GEAR_INFO=recvframe.data.u8[0];
               
               if (recvframe.data.u8[1] ==0x15) {
@@ -253,10 +256,11 @@ void ReadSPISlave(void * param) {
                   GEAR_INFO=0x00;
                   GEAR_STATUS_DRIVE=false; 
               }
+              ESP32Can.CANWriteFrame(&recvframe);
 
-            return;
+              return;
         }
-        ESP32Can.CANWriteFrame(&recvframe);
+        
         
         #ifdef WIFI_DEBUGGER
         //client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
@@ -398,10 +402,9 @@ void sendSPICan(void * params) {
         myTxBuffer[6]=bla[6];
         myTxBuffer[7]=bla[7];   
         myTxBuffer[8]=bla[8];   
-        spi_dma_transfer_bytes16(myTxBuffer,10);
-        
-        //vTaskDelay(50 / portTICK_PERIOD_MS);        
-        //vTaskDelete(NULL);
+        uint16_t txsize = sizeof(uint16_t) * (CAN_DLC + 1);
+        spi_dma_transfer_bytes16(myTxBuffer,txsize);
+
 }
 
 
@@ -563,7 +566,7 @@ void robloop(void *params) {
     
     //Serial.println("");
 
-    tx_frame.data.u8[0] = GEAR_INFO_ACTIVEGEAR;
+    tx_frame.data.u8[0] = 0;
 
     /*
     if (simulationgear > 1) {
@@ -759,10 +762,10 @@ delay(10);
 void setup() {
     //vTaskDelay(3000);
     
-    Serial.begin(115200);
+    //Serial.begin(115200);
     
     SetupCan();            
-    ESP32Can.CANInit(); 
+    
 
     #ifdef WIFI_DEBUGGER
     scanWIFI();
@@ -771,9 +774,12 @@ void setup() {
 
     #ifdef ISMASTER
     spi_master_config();              
-    CanReady=true; 
     #endif
     
+    
+    ESP32Can.CANInit(); 
+    CanReady=true; 
+
     #ifdef ISSLAVE
     setupSPI_slave();       
     
@@ -787,7 +793,8 @@ void setup() {
                     0);  /* Core where the task should run */
     
     #endif
-
+    
+    
 }
 
 void loop() {
