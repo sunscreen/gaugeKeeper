@@ -40,7 +40,7 @@
 #else
 #define ISSLAVE
 #define SERVERPORT 25031
-//#define WIFI_DEBUGGER;
+#define WIFI_DEBUGGER
 #warning "-COMPILING AS SLAVE-"
 #endif
 
@@ -54,7 +54,7 @@ esp_err_t spi_state;
 /* Slave vars */
 #define SPI_CHANNEL    HSPI_HOST
 //#define SPI_CLOCK      20000000 // 20MHz SPI clock
-#define SPI_CLOCK      SPI_MASTER_FREQ_20M
+#define SPI_CLOCK      SPI_MASTER_FREQ_40M
 
 /*
  * SPI master modes for ESP32:
@@ -96,7 +96,7 @@ const uint8_t WifiMonInterval = 5000;
 const uint8_t rx_queue_size = 1;       // Receive Queue size
 
 const char *ssid = "ASUS";
-const char *serverIP="192.168.1.10";
+const char *serverIP="192.168.1.11";
 
 WiFiClient client; //Declare a client object to connect to the server
 boolean WifiConnected = false;
@@ -212,24 +212,21 @@ void ReadSPISlave(void * param) {
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
-                //client.printf("SPI trans failed!\n");
+                client.printf("SPI trans failed!\n");
                 break;
             case ESP_OK:
-                //client.printf("SPI trans success!\n");                                         
+                client.printf("SPI trans success!\n");                                         
                 break;
         }
+        
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
         for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
         
-        if (recvframe.MsgID > 4095) {return;}
+        //if (recvframe.MsgID > 4095) {return;}
 
-        if (recvframe.MsgID != 0x43F) {
-          ESP32Can.CANWriteFrame(&recvframe);
-          return;
-        }
-        
+
         
         if (buffer[0] == 0x43F) {
             //GEAR_INFO_ACTIVEGEAR=recvframe.data.u8[0];
@@ -306,10 +303,10 @@ void spi_master_config(void) {
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
-            Serial.printf("SPI initialsation failed!\n");
+            //Serial.printf("SPI initialsation failed!\n");
             break;
         case ESP_OK:
-            Serial.printf("SPI initialsation success!\n");
+            //Serial.printf("SPI initialsation success!\n");
             break;
     }
 
@@ -404,7 +401,7 @@ void sendSPICan(void * params) {
         myTxBuffer[8]=bla[8];   
         uint16_t txsize = sizeof(uint16_t) * (CAN_DLC + 1);
         spi_dma_transfer_bytes16(myTxBuffer,txsize);
-
+        Serial.println(".");
 }
 
 
@@ -432,8 +429,6 @@ void mReadCan() {
   if ( (CAN_cfg.rx_queue != NULL) && (uxQueueMessagesWaiting(CAN_cfg.rx_queue)) ) {
   
       if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE) {
-
-  
 	        canList[0][0] = rx_frame.MsgID;
           canList[0][1] = rx_frame.data.u8[0];
           canList[0][2] = rx_frame.data.u8[1];
@@ -575,7 +570,7 @@ void robloop(void *params) {
       bitClear(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     }
     #endif
-    
+
    if (GEAR_STATUS_DRIVE == true) {
      bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
    } else {
@@ -761,28 +756,30 @@ delay(10);
 }
 
 void setup() {
-    //vTaskDelay(3000);
+    vTaskDelay(500);
     
-    //Serial.begin(115200);
-    
-    SetupCan();            
-    
-
+    Serial.begin(115200);
     #ifdef WIFI_DEBUGGER
     scanWIFI();
     devConnection();
     #endif
-
+    
+    SetupCan();            
+      
     #ifdef ISMASTER
     spi_master_config();              
+    ESP32Can.CANInit(); 
+    CanReady=true; 
+    
     #endif
     
     
-    ESP32Can.CANInit(); 
-    CanReady=true; 
+  
 
     #ifdef ISSLAVE
     setupSPI_slave();       
+    ESP32Can.CANInit(); 
+    CanReady=true; 
     
     xTaskCreatePinnedToCore(
                     robloop,   /* Function to implement the task */
@@ -794,7 +791,7 @@ void setup() {
                     0);  /* Core where the task should run */
     
     #endif
-    
+       
     
 }
 
