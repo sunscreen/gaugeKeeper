@@ -568,13 +568,14 @@ void robloop(void *params) {
 
     tx_frame.data.u8[0] = 0;
 
-    /*
+    #ifdef GEAR_SIMULATOR
     if (simulationgear > 1) {
       bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     } else {
       bitClear(tx_frame.data.u8[0],GEAR_SEL_AUTO);
     }
-    */
+    #endif
+    
    if (GEAR_STATUS_DRIVE == true) {
      bitSet(tx_frame.data.u8[0],GEAR_SEL_AUTO);
    } else {
