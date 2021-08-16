@@ -34,7 +34,6 @@
 
 #ifdef MASTERDEVICE
 #define ISMASTER
-
 #define SERVERPORT 25030
 #warning "-COMPILING AS MASTER-"
 #else
@@ -46,15 +45,14 @@
 
 /* Slave variables */
 #define SPI_Controller HSPI_HOST
-#define TLEN 256
+#define TLEN 128
 
 spi_slave_interface_config_t scfg;
 esp_err_t spi_state;
 
 /* Slave vars */
 #define SPI_CHANNEL    HSPI_HOST
-//#define SPI_CLOCK      20000000 // 20MHz SPI clock
-#define SPI_CLOCK      SPI_MASTER_FREQ_40M
+#define SPI_CLOCK      SPI_MASTER_FREQ_20M
 
 /*
  * SPI master modes for ESP32:
@@ -184,10 +182,10 @@ void setupSPI_slave() {
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
-            printf("SPI initialsation failed!\n");
+            //printf("SPI initialsation failed!\n");
             break;
         case ESP_OK:
-            printf("SPI initialsation success!\n");
+            //printf("SPI initialsation success!\n");
             break;
     }
   
@@ -212,16 +210,26 @@ void ReadSPISlave(void * param) {
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
-                client.printf("SPI trans failed!\n");
-                break;
+                client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
+                return;
             case ESP_OK:
-                client.printf("SPI trans success!\n");                                         
+                //client.printf("SPI trans success!\n");                                         
                 break;
         }
         
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
+        
+        
+        if (buffer[0] == 0xAAAA) {
+          client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
+          return;
+        }
+        if (buffer[0] > 0xFFF) {
+          client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
+          return;
+        }
         for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
         
         //if (recvframe.MsgID > 4095) {return;}
@@ -261,7 +269,7 @@ void ReadSPISlave(void * param) {
         
         #ifdef WIFI_DEBUGGER
         //client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
-        client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
+        client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
         #endif
 }
 // Initialize the SPI2 device in master mode
@@ -285,6 +293,7 @@ void spi_master_config(void) {
     devcfg.address_bits=0;
     devcfg.dummy_bits=0;
     devcfg.mode=SPI_MODE;
+    //devcfg.duty_cycle_pos=128;
     devcfg.duty_cycle_pos=128;
     devcfg.cs_ena_pretrans=0;
     devcfg.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
@@ -295,7 +304,7 @@ void spi_master_config(void) {
     devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
     
     #ifdef ISSLAVE 
-    devcfg.flags |= SPI_DEVICE_NO_DUMMY ;
+    devcfg.flags |= SPI_DEVICE_NO_DUMMY;
     #endif
     // Initialize and enable SPI
 	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
@@ -355,7 +364,7 @@ int32_t spi_dma_transfer_bytes16(uint16_t *data, uint16_t size) {
 		trans_t.rx_buffer = NULL;
 		trans_t.tx_buffer = myTxBuffer;
 	}
-	trans_t.rxlength = 0;
+	trans_t.rxlength = 16 * size;
 	trans_t.length = 16 * size;
 	trans_t.flags = 0;
 	trans_t.cmd = 0;
@@ -401,7 +410,7 @@ void sendSPICan(void * params) {
         myTxBuffer[8]=bla[8];   
         uint16_t txsize = sizeof(uint16_t) * (CAN_DLC + 1);
         spi_dma_transfer_bytes16(myTxBuffer,txsize);
-        Serial.println(".");
+        
 }
 
 
@@ -438,6 +447,7 @@ void mReadCan() {
           canList[0][6] = rx_frame.data.u8[5];
           canList[0][7] = rx_frame.data.u8[6];
           canList[0][8] = rx_frame.data.u8[7]; 
+          if (canList[0][0] == 0) {send_debug("WTTTTTTTTTTTTTTTTF!!!\n");}
           sendSPICan((void *)&canList[0]);
       }
   }
@@ -521,7 +531,7 @@ void robloop(void *params) {
   unsigned long currentMillis = millis();
 
   // Send CAN Message
-  if (currentMillis - previousMillis >= interval) {
+  if (currentMillis - previousMillis >= interval && CanReady == true) {
     previousMillis = currentMillis;
     
     CAN_frame_t tx_frame;
@@ -698,10 +708,10 @@ void scanWIFI() {
     while (WiFi.status() != WL_CONNECTED)
     {
      
-         if (WiFi.status() == WL_NO_SSID_AVAIL) {printf("WL: what no microwave radiation!?\n"); }
-         if (WiFi.status() == WL_CONNECTION_LOST) {printf("WL: We lost connection to the AP\n"); }
-         if (WiFi.status() == WL_CONNECT_FAILED) {printf("WL: We failed to connect to the AP\n"); }
-         if (WiFi.status() == WL_DISCONNECTED) {printf("WL:We are disconnected\n"); }
+         if (WiFi.status() == WL_NO_SSID_AVAIL) { printf("WL: what no microwave radiation!?\n"); }
+         if (WiFi.status() == WL_CONNECTION_LOST) { printf("WL: We lost connection to the AP\n"); }
+         if (WiFi.status() == WL_CONNECT_FAILED) { printf("WL: We failed to connect to the AP\n"); }
+         if (WiFi.status() == WL_DISCONNECTED) { printf("WL:We are disconnected\n"); }
         delay(500);
         
     }
@@ -741,6 +751,8 @@ void Coreloop() {
              
         #ifdef ISSLAVE 
           ReadSPISlave(NULL);
+
+         
         #endif
 
         
@@ -756,7 +768,7 @@ delay(10);
 }
 
 void setup() {
-    vTaskDelay(500);
+    //vTaskDelay(500);
     
     Serial.begin(115200);
     #ifdef WIFI_DEBUGGER
@@ -778,18 +790,28 @@ void setup() {
 
     #ifdef ISSLAVE
     setupSPI_slave();       
-    ESP32Can.CANInit(); 
-    CanReady=true; 
     
     xTaskCreatePinnedToCore(
                     robloop,   /* Function to implement the task */
                     "coreTask", /* Name of the task */
                     10000,      /* Stack size in words */
                     NULL,       /* Task input parameter */
+                    4,          /* Priority of the task */
+                    NULL,       /* Task handle. */
+                    0);  /* Core where the task should run */
+    ESP32Can.CANInit(); 
+    CanReady=true; 
+    
+    xTaskCreatePinnedToCore(
+                    gearchange,   /* Function to implement the task */
+                    "coreTask", /* Name of the task */
+                    5000,      /* Stack size in words */
+                    NULL,       /* Task input parameter */
                     2,          /* Priority of the task */
                     NULL,       /* Task handle. */
                     0);  /* Core where the task should run */
     
+    // gearchange(NULL);
     #endif
        
     
