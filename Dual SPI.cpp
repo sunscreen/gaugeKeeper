@@ -30,6 +30,7 @@
 #endif
 
 // Globals#
+//#define RANDOCAN = true;
 //#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
@@ -42,6 +43,15 @@
 #define SERVERPORT 25031
 #define WIFI_DEBUGGER
 #warning "-COMPILING AS SLAVE-"
+#endif
+
+
+#ifdef RANDOCAN
+#undef ISMASTER
+#undef ISSLAVE
+#undef WIFI_DEBUGGER
+//#define WIFI_DEBUGGER
+#define SERVERPORT 25032
 #endif
 
 /* Slave variables */
@@ -329,7 +339,7 @@ void ReadSPISlave(void * param) {
     GPIO.func_in_sel_cfg[SPI_CS_GPIO].sig_in_inv = 1; // CS of Display is Active High    
     
     
-        spi_state = spi_slave_transmit(SPI_Controller, &trans,portMAX_DELAY);
+        spi_state = spi_slave_transmit(SPI_Controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
             case ESP_ERR_NO_MEM:
@@ -404,13 +414,13 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
     WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
     CAN_frame_t recvframe;
     //WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
-    memset(buffer, 0xAA, TLEN); // fill buffer with some initial value
+    memset(buffer, 0xAB, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
     GPIO.func_in_sel_cfg[SD_CS].sig_in_inv = 1; // CS of Display is Active High    
     
     
-        spi_state = spi_slave_transmit(spi_controller, &trans,50 / portTICK_PERIOD_MS);
+        spi_state = spi_slave_transmit(spi_controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
             case ESP_ERR_NO_MEM:
@@ -421,6 +431,8 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
             case ESP_OK:
                 //client.printf("SPI trans success!\n");                                         
                 break;
+            case ESP_ERR_TIMEOUT:
+                return; /* try again when data is available */
         }
         
         recvframe.MsgID=buffer[0];
@@ -429,7 +441,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
         
         
         if (buffer[0] == 0xAAAA) {
-          client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
+          client.printf("SPI SENT NOTHING!!!!!!!!!!!!!!! error was %d\n",spi_state);
           return;
         }
         if (buffer[0] > 0xFFF) {
@@ -438,7 +450,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
         }
         for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
         
-        //if (recvframe.MsgID > 4095) {return;}    
+       ESP32Can.CANWriteFrame(&recvframe);
 
         
         
@@ -449,7 +461,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
 }
 
 
-// Initialize the SPI2 device in master mode
+
 void SetupCan() {
   CAN_cfg.speed = CAN_SPEED_500KBPS;
   CAN_cfg.tx_pin_id = GPIO_NUM_5;
@@ -584,10 +596,20 @@ void mReadCan() {
           canList[0][7] = rx_frame.data.u8[6];
           canList[0][8] = rx_frame.data.u8[7]; 
           //if (canList[0][0] == 0) {send_debug("WTTTTTTTTTTTTTTTTF!!!\n");}
-          client.printf("RECV CAN %x\n",canList[0][0] );
-          #ifdef ISMASTER
-          sendSPICan((void *)&canList[0],spi_handle);
+          //if ( WifiConnected == true && DebugerConnected) { client.printf("RECV CAN %x\n",canList[0][0] ); }
+          #ifdef RANDOCAN
+          //client.printf("RECV CAN %x\n",canList[0][0] );
           #endif
+
+          #ifdef ISMASTER
+          if (canList[0][0] == 0x615 || canList[0][0] == 0x613) {
+            client.printf("can frame rejected!!..\n");
+            return; /* do Not rebroadcast cluster ARBIDs */
+          }
+          sendSPICan((void *)&canList[0],spi_handle);
+          
+          #endif
+
           #ifdef ISSLAVE
           sendSPICan((void *)&canList[0],spi_handle2);
           #endif
@@ -903,12 +925,16 @@ void Coreloop() {
          
         #endif
 
-        
+        #ifdef RANDOCAN
+        if (CanReady == true ) {mReadCan();}
+        vTaskDelay(5);
+        #endif
+      
         #ifdef WIFI_TERMINAL
         if (WifiConnected == true && DebugerConnected == true) { 
         
-          //ProcessTCP();         
-      
+       //ProcessTCP();         
+        
         }
         #endif
   }
@@ -926,6 +952,8 @@ void setup() {
     
     SetupCan();            
       
+   
+
     #ifdef ISMASTER
     spi_master_config();              
     spi_slave_config2();
@@ -934,12 +962,20 @@ void setup() {
     
     #endif
     
-    
-  
-
     #ifdef ISSLAVE
     spi_slave_config();
     spi_master_config2();
+    ESP32Can.CANInit(); 
+    CanReady=true; 
+
+
+    #endif
+    
+  
+    #ifdef RANDOCAN
+    ESP32Can.CANInit(); 
+    CanReady=true; 
+    
     xTaskCreatePinnedToCore(
                     robloop,   /* Function to implement the task */
                     "coreTask", /* Name of the task */
@@ -948,20 +984,19 @@ void setup() {
                     4,          /* Priority of the task */
                     NULL,       /* Task handle. */
                     0);  /* Core where the task should run */
-    ESP32Can.CANInit(); 
-    CanReady=true; 
     
     xTaskCreatePinnedToCore(
                     gearchange,   /* Function to implement the task */
-                    "coreTask", /* Name of the task */
+                    "gearTask", /* Name of the task */
                     5000,      /* Stack size in words */
                     NULL,       /* Task input parameter */
                     2,          /* Priority of the task */
                     NULL,       /* Task handle. */
                     0);  /* Core where the task should run */
     
-    // gearchange(NULL);
-    #endif
+
+    #endif 
+
        
     
 }
