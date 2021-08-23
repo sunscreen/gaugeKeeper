@@ -8,28 +8,19 @@
 #include <WiFi.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
-#include "driver/spi_common.h"
-
 #include "ESP32CAN.h"
 #include "CAN_config.h"
 #include "wifipassword.h"
 #include "driver/spi_slave.h"
 #include "driver/spi_master.h"
+#include "driver/gpio.h"
+#include "driver/spi_common.h"
 
 
 #define CAN_DLC 8
 
-// You'll likely need this on vanilla FreeRTOS
-//#include semphr.h
-// Use only core 1 for demo purposes
-#if CONFIG_FREERTOS_UNICORE
-  static const BaseType_t app_cpu = 0;
-#else
-  static const BaseType_t app_cpu = 1;
-#endif
 
-// Globals#
+// Globals
 //#define RANDOCAN = true;
 //#define MASTERDEVICE = true;
 
@@ -57,15 +48,15 @@
 /* Slave variables */
 #define SPI_Controller HSPI_HOST
 #define SPI_Controller2 VSPI_HOST
-#define TLEN 128
+#define TLEN 64
 
 spi_slave_interface_config_t scfg;
 spi_slave_interface_config_t scfg2;
 esp_err_t spi_state;
 
-/* Slave vars */
+/* Master vars */
 #define SPI_CHANNEL    HSPI_HOST
-#define SPI_CHANNEL2    VSPI_HOST
+#define SPI_CHANNEL2   VSPI_HOST
 #define SPI_CLOCK      SPI_MASTER_FREQ_20M
 
 /*
@@ -90,8 +81,6 @@ esp_err_t spi_state;
 
 #define GEAR_SEL_AUTO 5
 
-//DMA_ATTR uint16_t myRxBuffer[SPI_MAX_DMA_LEN] = {};
-//DMA_ATTR uint16_t myTxBuffer[SPI_MAX_DMA_LEN] = {};
 
 DMA_ATTR uint8_t myRxBuffer8[SPI_MAX_DMA_LEN] = {};
 DMA_ATTR uint8_t myTxBuffer8[SPI_MAX_DMA_LEN] = {};
@@ -113,8 +102,8 @@ spi_device_interface_config_t devcfg2;
 
 CAN_device_t CAN_cfg;               // CAN Config
 unsigned long MonWifi_previousMillis=0;
+const uint16_t WifiMonInterval = 5000;
 
-const uint8_t WifiMonInterval = 5000;
 const uint8_t rx_queue_size = 1;       // Receive Queue size
 
 const char *ssid = "ASUS";
@@ -124,13 +113,6 @@ WiFiClient client; //Declare a client object to connect to the server
 boolean WifiConnected = false;
 boolean DebugerConnected = false;
 boolean CanReady = false;
-TaskHandle_t Task1;
-TaskHandle_t Task2;
- 
-char candata[128];
-char bla[128];
-char hexstring[256];     
-char *ptrtohex = hexstring;
 
 
 #define MAX_CAN_LIST 10
@@ -181,7 +163,6 @@ bool GEAR_STATUS_DRIVE = false;
 unsigned long interval = 20;           // interval at which to send 0x43F (milliseconds)
 unsigned long interval_gearchange = 2000;
 
-uint8_t clutchstatus=0;
 
 
 byte current_gear_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
@@ -195,12 +176,11 @@ void spi_master_config(void) {
     buscfg.quadhd_io_num=-1;
     buscfg.quadwp_io_num=-1;
     buscfg.max_transfer_sz=SPI_MAX_DMA_LEN;
-    // Configuration for the SPI master interface
+
 	  devcfg.command_bits=0;
     devcfg.address_bits=0;
     devcfg.dummy_bits=0;
     devcfg.mode=SPI_MODE;
-    //devcfg.duty_cycle_pos=128;
     devcfg.duty_cycle_pos=128;
     devcfg.cs_ena_pretrans=0;
     devcfg.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
@@ -286,14 +266,15 @@ void spi_slave_config() {
 
     spi_state = spi_slave_initialize(SPI_Controller, &buscfg, &scfg, 1);
     switch (spi_state){
+        case ESP_OK:
+            //printf("SPI initialsation success!\n");
+            break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
             //printf("SPI initialsation failed!\n");
             break;
-        case ESP_OK:
-            //printf("SPI initialsation success!\n");
-            break;
+
     }
   
 }
@@ -345,7 +326,7 @@ void ReadSPISlave(void * param) {
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
-                client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
+                //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
                 return;
             case ESP_OK:
                 //client.printf("SPI trans success!\n");                                         
@@ -358,7 +339,7 @@ void ReadSPISlave(void * param) {
         
         
         if (buffer[0] == 0xAAAA) {
-          client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
+          //client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
           return;
         }
         if (buffer[0] > 0xFFF) {
@@ -426,7 +407,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
-                client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
+                //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
                 return;
             case ESP_OK:
                 //client.printf("SPI trans success!\n");                                         
@@ -440,8 +421,9 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
         recvframe.FIR.B.FF = CAN_frame_std;
         
         
-        if (buffer[0] == 0xAAAA) {
-          client.printf("SPI SENT NOTHING!!!!!!!!!!!!!!! error was %d\n",spi_state);
+        if (buffer[0] == 0xABAB) {
+          //client.printf("SPI SENT NOTHING!!!!!!!!!!!!!!! error was %d\n",spi_state);
+          //We dont know what to do yet 
           return;
         }
         if (buffer[0] > 0xFFF) {
@@ -533,18 +515,8 @@ void encodeCanValue(const short inval,char *outResponse) {
   outResponse[1] = inval & 0xff;
 }
 
-
-
-void send_debug(const char *mydata) {
-  if (client.connected() || client.availableForWrite()) { //If it is connected or has received unread data
-    //client.print(mydata);                    //Send data to the server
-    client.write(mydata);
-  }
-}
-
 void sendSPICan(void * params, spi_device_handle_t m_handle) {
-   // Release the mutex so that the creating function can finish
-        //xSemaphoreGive(mutex);
+
         uint16_t * bla;
         bla=(uint16_t *)params;
         myTxBuffer[0]=bla[0];
@@ -620,36 +592,9 @@ void mReadCan() {
 }
 
 
-int randInRange( int min, int max )
-{
-  double scale = 1.0 / (RAND_MAX + 1);
-  double range = max - min + 1;
-  return min + (int) ( rand() * scale * range );
-}
-
-void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte3,byte m_byte4,byte m_byte5,byte m_byte6,byte m_byte7) {
-    CAN_frame_t tx_frame;
-    tx_frame.FIR.B.FF = CAN_frame_std;
-    tx_frame.MsgID = ARBID;
-    tx_frame.FIR.B.DLC = 8;
-    
-    tx_frame.data.u8[0] = m_byte0;
-    tx_frame.data.u8[1] = m_byte1;
-    tx_frame.data.u8[2] = m_byte2; 
-    tx_frame.data.u8[3] = m_byte3;
-    tx_frame.data.u8[4] = m_byte4;
-    tx_frame.data.u8[5] = m_byte5;
-    tx_frame.data.u8[6] = m_byte6;
-    tx_frame.data.u8[7] = m_byte7;
-
-    ESP32Can.CANWriteFrame(&tx_frame);
-    vTaskDelay(10 / portTICK_RATE_MS);   
-
-}
 uint8_t GEAR_INFO_TOPGEAR=7;
 uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10,0x07};
 //uint8_t drivelogic_matrix[] = {0x01,0x30,0x50,0x70,0x90,0xB0,0xD0,0x12};
-
 //uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
 //uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
 uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6,0x02}; /* REVERSE SPORT NCD MODE*/
@@ -774,46 +719,6 @@ void robloop(void *params) {
 
 }
 
-void SendCANRPM2( void * params) {
-  
-    CAN_frame_t tx_frame;
-
-    uint8_t rpm=1000;
-    while (1) {
-    
-    tx_frame.FIR.B.FF = CAN_frame_std;
-    tx_frame.MsgID = 0x43F;
-    tx_frame.FIR.B.DLC = 8;
-    
-    sendARBID(0x329,0x80,0x64, 0xCF, 0x04, 0x00, 0x00, 0x00,0x00);
-    //ESP32Can.CANWriteFrame(&tx_frame);
-    //vTaskDelay(20 / portTICK_RATE_MS);    
-    //robloop();
-    sendARBID(0x545,0x02,0x00, 0x00, 0x60, 0x4A, 0x00, 0x00,0x00);
-    rpm=rpm+200;
-    if (rpm >9999) {
-      rpm=1000; 
-    }
-
-    uint8_t number = rpm / 1000;
-		byte txdata;
-    number = number * 16;
-		// Set Bits according to Bitmap
-		for(uint8_t n = 4; n < 7; n++){
-			uint8_t bit = (number >> n) & 1U;
-			txdata ^= (-bit ^ txdata) & (1UL << n);
-		}
-
-    sendARBID(0x316,0x0D, 0x00, 0xAE, txdata, 0x56, 0x34, 0x00,0x00);
-    //sendARBID(0x1F0,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
-    sendARBID(0x1F3,0x09,0x60,0x09,0x00,0x09,0x00,0x09,0x08);
-    //sendARBID(0x1F5,0x42,0x80,0x00,0x00,0x80,0x11,0x09,0x08);
-    sendARBID(0x153,0x00,0x48,0x00,0xFF,0x00,0xFF,0xFF,0x80);
-    //sendARBID(0x316,0x0D, 0x09, 0x09, 0x00, 0x56, 0x34, 0x00,0x00); 
-    //sendARBID(0x43D,0x03,0x05,0x00,0xFF,0x00,0xFF,0xFF,0xFF);
-    }
-}
-
 
 void devConnection() {
     Serial.println("Try to access the server");
@@ -825,10 +730,8 @@ void devConnection() {
         #else
         client.printf("SLAVE DEBUGGER ONLINE\n");
         #endif
-
         DebugerConnected=true;
-        // Init CAN Module        
-        CanReady = true;
+
     }
     else
     {
@@ -883,11 +786,10 @@ void scanWIFI() {
     Serial.print("IP Address:");
     Serial.println(WiFi.localIP());
     WifiConnected=true;
-    Serial.println("big delay for slow wifi\n");
 
 }
   // Wait a bit before trying to connect.
-  delay(4000);
+  delay(1000);
 }
 void ProcessTCP() {
     if (client.connected() || client.available()) //If it is connected or has received unread data
@@ -942,8 +844,6 @@ delay(10);
 }
 
 void setup() {
-    //vTaskDelay(500);
-    
     Serial.begin(115200);
     #ifdef WIFI_DEBUGGER
     scanWIFI();
