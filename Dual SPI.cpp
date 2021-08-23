@@ -17,12 +17,13 @@
 #include "driver/spi_common.h"
 
 
+
 #define CAN_DLC 8
 
 
 // Globals
 //#define RANDOCAN = true;
-//#define MASTERDEVICE = true;
+#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -107,7 +108,7 @@ const uint16_t WifiMonInterval = 5000;
 const uint8_t rx_queue_size = 1;       // Receive Queue size
 
 const char *ssid = "ASUS";
-const char *serverIP="192.168.1.11";
+const char *serverIP="192.168.1.4";
 
 WiFiClient client; //Declare a client object to connect to the server
 boolean WifiConnected = false;
@@ -139,10 +140,6 @@ CAN_frame_t rx_frame;
 CAN_frame_t tx_frame;
 
 
-byte randnum=0;
-uint16_t cancounter=0x00;
-//uint8_t lastgear=0;
-
 unsigned long previousMillis = 0;
 unsigned long previousMillis_gearchange=0;
 uint8_t simulationgear=0;
@@ -164,6 +161,9 @@ unsigned long interval = 20;           // interval at which to send 0x43F (milli
 unsigned long interval_gearchange = 2000;
 
 
+unsigned long previousMillis_blinkled = 0;
+unsigned long blink_interval=250;
+bool ledState;
 
 byte current_gear_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
 byte gear_selector_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
@@ -196,14 +196,15 @@ void spi_master_config(void) {
     // Initialize and enable SPI
 	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
 	  switch (spi_state){
+        case ESP_OK:
+            //Serial.printf("SPI initialsation success!\n");
+            break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
             //Serial.printf("SPI initialsation failed!\n");
             break;
-        case ESP_OK:
-            //Serial.printf("SPI initialsation success!\n");
-            break;
+
     }
 
   spi_state = spi_bus_add_device(SPI_CHANNEL, &devcfg, &spi_handle);
@@ -236,13 +237,13 @@ void spi_master_config2(void) {
     // Initialize and enable SPI
 	  spi_state = spi_bus_initialize(SPI_CHANNEL2, &buscfg2, 2);
 	  switch (spi_state){
+        case ESP_OK:
+            client.printf("Secondary SPI initialsation success!\n");
+            break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
             client.printf("Secondary SPI initialsation failed!\n");
-            break;
-        case ESP_OK:
-            client.printf("Secondary SPI initialsation success!\n");
             break;
     }
 
@@ -295,13 +296,13 @@ void spi_slave_config2() {
 
     spi_state = spi_slave_initialize(SPI_Controller2, &buscfg2, &scfg2, 2);
     switch (spi_state){
+        case ESP_OK:
+            client.printf("Secondary SPI Slave initialsation success!\n");
+            break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
             client.printf("Secondary SPI Slave initialsation failed!\n");
-            break;
-        case ESP_OK:
-            client.printf("Secondary SPI Slave initialsation success!\n");
             break;
     }
   
@@ -323,16 +324,19 @@ void ReadSPISlave(void * param) {
         spi_state = spi_slave_transmit(SPI_Controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
+            case ESP_OK:
+                //client.printf("SPI trans success!\n");                                         
+                break;
+            case ESP_ERR_TIMEOUT:
+                return; /* try again when data is available */
             case ESP_ERR_NO_MEM:
             case ESP_ERR_INVALID_STATE:
             case ESP_ERR_INVALID_ARG:
                 //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
                 return;
-            case ESP_OK:
-                //client.printf("SPI trans success!\n");                                         
-                break;
         }
-        
+
+
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
@@ -404,16 +408,16 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
         spi_state = spi_slave_transmit(spi_controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
-            case ESP_ERR_NO_MEM:
-            case ESP_ERR_INVALID_STATE:
-            case ESP_ERR_INVALID_ARG:
-                //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
-                return;
             case ESP_OK:
                 //client.printf("SPI trans success!\n");                                         
                 break;
             case ESP_ERR_TIMEOUT:
                 return; /* try again when data is available */
+            case ESP_ERR_NO_MEM:
+            case ESP_ERR_INVALID_STATE:
+            case ESP_ERR_INVALID_ARG:
+                //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
+                return;
         }
         
         recvframe.MsgID=buffer[0];
@@ -595,6 +599,7 @@ void mReadCan() {
 uint8_t GEAR_INFO_TOPGEAR=7;
 uint8_t gearmatrix[] = { 0x06,0x01,0x02,0x03,0x04,9,10,0x07};
 //uint8_t drivelogic_matrix[] = {0x01,0x30,0x50,0x70,0x90,0xB0,0xD0,0x12};
+
 //uint8_t drivelogic_matrix[] = {0x01,0x36,0x56,0x76,0x96,0xB6,0xD6,0x12}; /* SPORT EXTENDED */
 //uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6}; /* SPORT NCD MODE*/
 uint8_t drivelogic_matrix[] = {0x01,0x26,0x46,0x66,0x86,0xA6,0xD6,0x02}; /* REVERSE SPORT NCD MODE*/
@@ -842,9 +847,14 @@ void Coreloop() {
   }
 delay(10);
 }
+const int freq = 9000;
+const int ledChannel = 0;
+const int resolution = 10;
 
 void setup() {
     Serial.begin(115200);
+
+
     #ifdef WIFI_DEBUGGER
     scanWIFI();
     devConnection();
