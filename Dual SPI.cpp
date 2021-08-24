@@ -737,11 +737,19 @@ void devConnection() {
     {
         Serial.println("Visit successful");
         #ifdef ISMASTER
-        if (client.connected()) { client.printf("MASTER DEBUGER ONLINE\n"); }                    //Send data to the server        
+        if (client.connected()) { 
+          client.printf("MASTER DEBUGER ONLINE\n"); 
+          DebugerConnected=true;
+        }
+        
         #else
-        if (client.connected()) { client.printf("SLAVE DEBUGGER ONLINE\n"); }
+        if (client.connected()) { 
+          client.printf("SLAVE DEBUGGER ONLINE\n"); 
+          DebugerConnected=true;
+        }
+        
         #endif
-        DebugerConnected=true;
+        
 
     }
     else
