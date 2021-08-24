@@ -182,7 +182,7 @@ void spi_master_config(void) {
     devcfg.mode=SPI_MODE;
     devcfg.duty_cycle_pos=128;
     devcfg.cs_ena_pretrans=0;
-    devcfg.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
+    devcfg.cs_ena_posttrans= 0,    
     devcfg.clock_speed_hz=SPI_CLOCK;
     devcfg.spics_io_num=SPI_CS_GPIO;
     devcfg.queue_size=1;
@@ -222,7 +222,7 @@ void spi_master_config2(void) {
     //devcfg.duty_cycle_pos=128;
     devcfg2.duty_cycle_pos=128;
     devcfg2.cs_ena_pretrans=0;
-    devcfg2.cs_ena_posttrans= 3, // Keep the CS low 3 cycles after transaction, to stop the master from missing the last bit when CS has less propagation delay than CLK
+    devcfg2.cs_ena_posttrans= 0,
     devcfg2.clock_speed_hz=SPI_CLOCK;
     devcfg2.spics_io_num=SD_CS;
     devcfg2.queue_size=1;
