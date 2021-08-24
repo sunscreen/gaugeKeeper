@@ -189,9 +189,6 @@ void spi_master_config(void) {
     
     devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
     
-    #ifdef ISSLAVE 
-    devcfg.flags |= SPI_DEVICE_NO_DUMMY;
-    #endif
     // Initialize and enable SPI
 	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
 	  switch (spi_state){
