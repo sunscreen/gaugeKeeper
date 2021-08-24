@@ -15,15 +15,14 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "driver/spi_common.h"
-
-
+#include "driver/ledc.h"
 
 #define CAN_DLC 8
 
 
 // Globals
 //#define RANDOCAN = true;
-#define MASTERDEVICE = true;
+//#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -238,12 +237,17 @@ void spi_master_config2(void) {
 	  spi_state = spi_bus_initialize(SPI_CHANNEL2, &buscfg2, 2);
 	  switch (spi_state){
         case ESP_OK:
-            client.printf("Secondary SPI initialsation success!\n");
+            if (client.connected()) { 
+              client.printf("Secondary SPI initialsation success!\n"); 
+              }
+
             break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
-            client.printf("Secondary SPI initialsation failed!\n");
+            if (client.connected()) {
+              client.printf("Secondary SPI initialsation failed!\n");
+            }
             break;
     }
 
@@ -262,8 +266,6 @@ void spi_slave_config() {
     scfg.queue_size=1;
     scfg.mode=0;
     
-
-    GPIO.func_in_sel_cfg[SPI_CS_GPIO].sig_in_inv = 1; // CS of Display is Active High
 
     spi_state = spi_slave_initialize(SPI_Controller, &buscfg, &scfg, 1);
     switch (spi_state){
@@ -291,18 +293,19 @@ void spi_slave_config2() {
     scfg2.queue_size=1;
     scfg2.mode=0;
     
-
-    GPIO.func_in_sel_cfg[SD_CS].sig_in_inv = 1; // CS of Display is Active High
-
     spi_state = spi_slave_initialize(SPI_Controller2, &buscfg2, &scfg2, 2);
     switch (spi_state){
         case ESP_OK:
-            client.printf("Secondary SPI Slave initialsation success!\n");
+            if (client.connected()) {
+              client.printf("Secondary SPI Slave initialsation success!\n");
+            } 
             break;
         case ESP_ERR_NO_MEM:
         case ESP_ERR_INVALID_STATE:
         case ESP_ERR_INVALID_ARG:
+        if (client.connected()) {
             client.printf("Secondary SPI Slave initialsation failed!\n");
+        }
             break;
     }
   
@@ -314,13 +317,10 @@ void ReadSPISlave(void * param) {
     
     WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
     CAN_frame_t recvframe;
-    //WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
     memset(buffer, 0xAA, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
-    GPIO.func_in_sel_cfg[SPI_CS_GPIO].sig_in_inv = 1; // CS of Display is Active High    
-    
-    
+  
         spi_state = spi_slave_transmit(SPI_Controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
@@ -336,12 +336,13 @@ void ReadSPISlave(void * param) {
                 return;
         }
 
-
+          
+          
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
-        
-        
+
+
         if (buffer[0] == 0xAAAA) {
           //client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
           return;
@@ -389,7 +390,9 @@ void ReadSPISlave(void * param) {
         
         #ifdef WIFI_DEBUGGER
         //client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
-        client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
+          if (client.connected() ) {
+          client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
+          }
         #endif
 }
 
@@ -402,9 +405,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
     memset(buffer, 0xAB, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
-    GPIO.func_in_sel_cfg[SD_CS].sig_in_inv = 1; // CS of Display is Active High    
-    
-    
+
         spi_state = spi_slave_transmit(spi_controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
@@ -420,18 +421,19 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
                 return;
         }
         
+        
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
-        
-        
+            
         if (buffer[0] == 0xABAB) {
           //client.printf("SPI SENT NOTHING!!!!!!!!!!!!!!! error was %d\n",spi_state);
           //We dont know what to do yet 
           return;
         }
         if (buffer[0] > 0xFFF) {
-          client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
+          if (client.connected()) {client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n"); }
+
           return;
         }
         for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
@@ -440,9 +442,10 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
 
         
         
-        #ifdef WIFI_DEBUGGER
-        //client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
-        client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
+        #ifdef WIFI_DEBUGGER        
+        if (client.connected()) {
+           client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
+        }        
         #endif
 }
 
@@ -558,9 +561,11 @@ void msendCan(void * inbuf) {
 void mReadCan() {
   //unsigned long currentMillis = millis();
   // Receive next CAN frame from queue
+     
 
   if ( (CAN_cfg.rx_queue != NULL) && (uxQueueMessagesWaiting(CAN_cfg.rx_queue)) ) {
-  
+          ledcWrite(1, 256);
+          ledcWrite(2, 256); 
       if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE) {
 	        canList[0][0] = rx_frame.MsgID;
           canList[0][1] = rx_frame.data.u8[0];
@@ -578,11 +583,14 @@ void mReadCan() {
           #endif
 
           #ifdef ISMASTER
+        
           if (canList[0][0] == 0x615 || canList[0][0] == 0x613) {
             client.printf("can frame rejected!!..\n");
             return; /* do Not rebroadcast cluster ARBIDs */
           }
           sendSPICan((void *)&canList[0],spi_handle);
+          ledcWrite(1, 255 - 65);
+          ledcWrite(2, 255 - 35);
           
           #endif
 
@@ -726,14 +734,15 @@ void robloop(void *params) {
 
 
 void devConnection() {
+    if (WifiConnected == false) { return; }
     Serial.println("Try to access the server");
     if (client.connect(serverIP, SERVERPORT)) //Try to access the target address
     {
         Serial.println("Visit successful");
         #ifdef ISMASTER
-        client.printf("MASTER DEBUGER ONLINE\n");                    //Send data to the server        
+        if (client.connected()) { client.printf("MASTER DEBUGER ONLINE\n"); }                    //Send data to the server        
         #else
-        client.printf("SLAVE DEBUGGER ONLINE\n");
+        if (client.connected()) { client.printf("SLAVE DEBUGGER ONLINE\n"); }
         #endif
         DebugerConnected=true;
 
@@ -749,6 +758,7 @@ void devConnection() {
 void scanWIFI() {
   Serial.println("scan start");
     uint8_t netfound=false;
+    uint8_t failcount=0;
     while (netfound == false) {
       // WiFi.scanNetworks will return the number of networks found
       uint8_t n = WiFi.scanNetworks();
@@ -785,12 +795,17 @@ void scanWIFI() {
          if (WiFi.status() == WL_CONNECT_FAILED) { printf("WL: We failed to connect to the AP\n"); }
          if (WiFi.status() == WL_DISCONNECTED) { printf("WL:We are disconnected\n"); }
         delay(500);
-        
+        failcount++;
+        if (failcount > 50) { break; }
     }
+    if (WiFi.status() == WL_CONNECTED) {
     Serial.println("Connected");
     Serial.print("IP Address:");
     Serial.println(WiFi.localIP());
     WifiConnected=true;
+    } else {
+      WifiConnected = false;
+    }
 
 }
   // Wait a bit before trying to connect.
@@ -847,13 +862,40 @@ void Coreloop() {
   }
 delay(10);
 }
-const int freq = 9000;
-const int ledChannel = 0;
-const int resolution = 10;
 
 void setup() {
-    Serial.begin(115200);
+  //Serial.begin(115200);
+    pinMode(0,OUTPUT);
+    pinMode(34,OUTPUT);
+    pinMode(35,OUTPUT);
 
+
+    //ledcAttachPin(0, LEDC_CHANNEL_0);
+    ledcAttachPin(2, LEDC_CHANNEL_1);
+    ledcAttachPin(34, LEDC_CHANNEL_2);
+    ledcAttachPin(35, LEDC_CHANNEL_3);
+    //ledcSetup(LEDC_CHANNEL_0, 0, LEDC_TIMER_12_BIT);
+    //ledcSetup(LEDC_CHANNEL_1, 0, LEDC_TIMER_12_BIT);
+    ledcSetup(LEDC_CHANNEL_1, 12000, 8);
+    ledcSetup(LEDC_CHANNEL_2, 12000, 8);
+    ledcSetup(LEDC_CHANNEL_3, 12000, 8);
+    //edcSetup(LEDC_CHANNEL_2, 12000, 8);
+
+    ledcWrite(1, 256);
+    ledcWrite(2, 256);
+    ledcWrite(3, 256);
+    //ledcWrite(2, 0);
+    //ledcWrite(2, 0);
+    delay(2000);    
+    ledcWrite(1, 255 - 65);
+    ledcWrite(2, 255 - 35);
+    ledcWrite(3, 255 - 55);
+    delay(2000);    
+    ledcWrite(2, 256 - 65);
+    ledcWrite(1, 256 - 35);
+    ledcWrite(3, 255 - 85);
+
+    delay(2000);
 
     #ifdef WIFI_DEBUGGER
     scanWIFI();
