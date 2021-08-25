@@ -21,8 +21,10 @@
 
 
 // Globals
-//#define RANDOCAN = true;
-//#define MASTERDEVICE = true;
+//#define RANDOCAN = true
+//#define SEND_EGS_CAN
+
+#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -162,7 +164,7 @@ unsigned long interval_gearchange = 2000;
 
 unsigned long previousMillis_blinkled = 0;
 unsigned long blink_interval=250;
-bool ledState;
+bool ledState=false;
 
 byte current_gear_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
 byte gear_selector_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
@@ -348,7 +350,7 @@ void ReadSPISlave(void * param) {
           client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
           return;
         }
-        for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
+        for (uint8_t c=0;c<7;c++) recvframe.data.u8[c]=buffer[c+1];
         
         //if (recvframe.MsgID > 4095) {return;}
 
@@ -402,7 +404,8 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
     memset(buffer, 0xAB, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
-
+      
+          
         spi_state = spi_slave_transmit(spi_controller, &trans,20 / portTICK_PERIOD_MS);
         
         switch (spi_state){
@@ -418,7 +421,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
                 return;
         }
         
-        
+     
         recvframe.MsgID=buffer[0];
         recvframe.FIR.B.DLC=8;
         recvframe.FIR.B.FF = CAN_frame_std;
@@ -433,7 +436,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
 
           return;
         }
-        for (uint8_t c=0;c<8;c++) recvframe.data.u8[c]=buffer[c+1];
+        for (uint8_t c=0;c<7;c++) recvframe.data.u8[c]=buffer[c+1];
         
        ESP32Can.CANWriteFrame(&recvframe);
 
@@ -586,9 +589,21 @@ void mReadCan() {
             return; /* do Not rebroadcast cluster ARBIDs */
           }
           sendSPICan((void *)&canList[0],spi_handle);
-          ledcWrite(1, 255 - 65);
-          ledcWrite(2, 255 - 35);
+          if (ledState == false) {          
+          //ledcWrite(1, 256);
           
+          
+          
+          ledcWrite(1, 255 - 5);
+          ledState=true;
+          } else {
+          //ledcWrite(1, 255-30);
+          ledcWrite(1, 256);
+          
+          
+          ledState=false;
+
+          }
           #endif
 
           #ifdef ISSLAVE
@@ -868,45 +883,56 @@ void Coreloop() {
 delay(10);
 }
 
-void setup() {
-  //Serial.begin(115200);
-    pinMode(0,OUTPUT);
-    pinMode(34,OUTPUT);
-    pinMode(35,OUTPUT);
-
+void setupLEDS() {
+    
+    pinMode(2,OUTPUT);
+    pinMode(33,OUTPUT);
 
     //ledcAttachPin(0, LEDC_CHANNEL_0);
     ledcAttachPin(2, LEDC_CHANNEL_1);
-    ledcAttachPin(34, LEDC_CHANNEL_2);
-    ledcAttachPin(35, LEDC_CHANNEL_3);
+    ledcAttachPin(33, LEDC_CHANNEL_2);
+
     //ledcSetup(LEDC_CHANNEL_0, 0, LEDC_TIMER_12_BIT);
     //ledcSetup(LEDC_CHANNEL_1, 0, LEDC_TIMER_12_BIT);
     ledcSetup(LEDC_CHANNEL_1, 12000, 8);
     ledcSetup(LEDC_CHANNEL_2, 12000, 8);
-    ledcSetup(LEDC_CHANNEL_3, 12000, 8);
+
+}
+void turnoff_led_chan(uint8_t mychan) {
+    //Serial.begin(115200);
     //edcSetup(LEDC_CHANNEL_2, 12000, 8);
+    ledcWrite(mychan, 256);
+    //digitalWrite(mychan,LOW);
+    
+}
+#define LEDINSTALLED
+void setup() {
+    Serial.begin(115200);
+    #ifdef LEDINSTALLED
+    setupLEDS();
+    turnoff_led_chan(LEDC_CHANNEL_1);
+    turnoff_led_chan(LEDC_CHANNEL_2);
 
-    ledcWrite(1, 256);
-    ledcWrite(2, 256);
-    ledcWrite(3, 256);
-    //ledcWrite(2, 0);
-    //ledcWrite(2, 0);
     delay(2000);    
-    ledcWrite(1, 255 - 65);
-    ledcWrite(2, 255 - 35);
-    ledcWrite(3, 255 - 55);
-    delay(2000);    
-    ledcWrite(2, 256 - 65);
-    ledcWrite(1, 256 - 35);
-    ledcWrite(3, 255 - 85);
 
-    delay(2000);
+    ledcWrite(1,255-20);
+    ledcWrite(2,256);
+    #endif
+
+    //ledcWrite(3,256);
+    //ledcWrite(2,256-55);
+    //ledcWrite(1,256-55);
+    //ledcWrite(2,256-55);
 
     #ifdef WIFI_DEBUGGER
     scanWIFI();
     devConnection();
     #endif
     
+
+   
+ 
+
     SetupCan();            
       
    
@@ -928,7 +954,19 @@ void setup() {
 
     #endif
     
-  
+    #ifdef SEND_EGS_CAN
+        xTaskCreatePinnedToCore(
+                    robloop,   /* Function to implement the task */
+                    "coreTask", /* Name of the task */
+                    10000,      /* Stack size in words */
+                    NULL,       /* Task input parameter */
+                    4,          /* Priority of the task */
+                    NULL,       /* Task handle. */
+                    0);  /* Core where the task should run */
+    
+
+    #endif 
+
     #ifdef RANDOCAN
     ESP32Can.CANInit(); 
     CanReady=true; 
