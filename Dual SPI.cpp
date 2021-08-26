@@ -16,6 +16,7 @@
 #include "driver/gpio.h"
 #include "driver/spi_common.h"
 #include "driver/ledc.h"
+#include "driver/can.h"
 
 #define CAN_DLC 8
 
@@ -24,12 +25,14 @@
 //#define RANDOCAN = true
 //#define SEND_EGS_CAN
 
+#define ESP_IDF_CAN
+
 #define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
 #define SERVERPORT 25030
-#define WIFI_DEBUGGER
+//#define WIFI_DEBUGGER
 #warning "-COMPILING AS MASTER-"
 #else
 #define ISSLAVE
@@ -117,7 +120,7 @@ boolean DebugerConnected = false;
 boolean CanReady = false;
 
 
-#define MAX_CAN_LIST 10
+#define MAX_CAN_LIST 0
 uint16_t canList[MAX_CAN_LIST][10];
 uint8_t currentCan = 0;
 uint8_t currentMaxCan = 0;
@@ -139,7 +142,7 @@ uint32_t canTimestamp = 0;
 boolean gotCan = false;
 CAN_frame_t rx_frame;
 CAN_frame_t tx_frame;
-
+uint8_t buffcounter=0;
 
 unsigned long previousMillis = 0;
 unsigned long previousMillis_gearchange=0;
@@ -347,10 +350,10 @@ void ReadSPISlave(void * param) {
           return;
         }
         if (buffer[0] > 0xFFF) {
-          client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
+          //client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
           return;
         }
-        for (uint8_t c=0;c<7;c++) recvframe.data.u8[c]=buffer[c+1];
+        for (buffcounter=0;buffcounter<7;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
         
         //if (recvframe.MsgID > 4095) {return;}
 
@@ -432,11 +435,13 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
           return;
         }
         if (buffer[0] > 0xFFF) {
+          #ifdef WIFI_DEBUGGER
           if (client.connected()) {client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n"); }
+          #endif
 
           return;
         }
-        for (uint8_t c=0;c<7;c++) recvframe.data.u8[c]=buffer[c+1];
+        for (buffcounter =0;buffcounter<7;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
         
        ESP32Can.CANWriteFrame(&recvframe);
 
@@ -456,6 +461,31 @@ void SetupCan() {
   CAN_cfg.tx_pin_id = GPIO_NUM_5;
   CAN_cfg.rx_pin_id = GPIO_NUM_4;
   CAN_cfg.rx_queue = xQueueCreate(rx_queue_size, sizeof(CAN_frame_t));
+  
+}
+
+void can_driver_setup() {
+     //Initialize configuration structures using macro initializers
+    can_general_config_t g_config = CAN_GENERAL_CONFIG_DEFAULT(GPIO_NUM_21, GPIO_NUM_22, CAN_MODE_NORMAL);
+    can_timing_config_t t_config = CAN_TIMING_CONFIG_500KBITS();
+    can_filter_config_t f_config = CAN_FILTER_CONFIG_ACCEPT_ALL();
+
+    //Install CAN driver
+    if (can_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
+        printf("Driver installed\n");
+    } else {
+        printf("Failed to install driver\n");
+        return;
+    }
+
+    //Start CAN driver
+    if (can_start() == ESP_OK) {
+        printf("Driver started\n");
+    } else {
+        printf("Failed to start driver\n");
+        return;
+    }
+
   
 }
 
@@ -564,9 +594,9 @@ void mReadCan() {
      
 
   if ( (CAN_cfg.rx_queue != NULL) && (uxQueueMessagesWaiting(CAN_cfg.rx_queue)) ) {
-          ledcWrite(1, 256);
-          ledcWrite(2, 256); 
-      if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 * portTICK_PERIOD_MS) == pdTRUE) {
+          //ledcWrite(1, 256);
+           
+      if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 3 / portTICK_PERIOD_MS) == pdTRUE) {
 	        canList[0][0] = rx_frame.MsgID;
           canList[0][1] = rx_frame.data.u8[0];
           canList[0][2] = rx_frame.data.u8[1];
@@ -584,26 +614,12 @@ void mReadCan() {
 
           #ifdef ISMASTER
         
-          if (canList[0][0] == 0x615 || canList[0][0] == 0x613) {
+          if ((canList[0][0] == 0x615) || (canList[0][0] == 0x613)) {
             client.printf("can frame rejected!!..\n");
             return; /* do Not rebroadcast cluster ARBIDs */
           }
           sendSPICan((void *)&canList[0],spi_handle);
-          if (ledState == false) {          
-          //ledcWrite(1, 256);
-          
-          
-          
-          ledcWrite(1, 255 - 5);
-          ledState=true;
-          } else {
-          //ledcWrite(1, 255-30);
-          ledcWrite(1, 256);
-          
-          
-          ledState=false;
-
-          }
+          vTaskDelay(5);
           #endif
 
           #ifdef ISSLAVE
@@ -886,16 +902,16 @@ delay(10);
 void setupLEDS() {
     
     pinMode(2,OUTPUT);
-    pinMode(33,OUTPUT);
+    ///pinMode(33,OUTPUT);
 
     //ledcAttachPin(0, LEDC_CHANNEL_0);
     ledcAttachPin(2, LEDC_CHANNEL_1);
-    ledcAttachPin(33, LEDC_CHANNEL_2);
+    ///ledcAttachPin(33, LEDC_CHANNEL_2);
 
     //ledcSetup(LEDC_CHANNEL_0, 0, LEDC_TIMER_12_BIT);
     //ledcSetup(LEDC_CHANNEL_1, 0, LEDC_TIMER_12_BIT);
     ledcSetup(LEDC_CHANNEL_1, 12000, 8);
-    ledcSetup(LEDC_CHANNEL_2, 12000, 8);
+    //ledcSetup(LEDC_CHANNEL_2, 12000, 8);
 
 }
 void turnoff_led_chan(uint8_t mychan) {
@@ -905,37 +921,26 @@ void turnoff_led_chan(uint8_t mychan) {
     //digitalWrite(mychan,LOW);
     
 }
-#define LEDINSTALLED
+//#define LEDINSTALLED
 void setup() {
     Serial.begin(115200);
     #ifdef LEDINSTALLED
     setupLEDS();
     turnoff_led_chan(LEDC_CHANNEL_1);
-    turnoff_led_chan(LEDC_CHANNEL_2);
+    //turnoff_led_chan(LEDC_CHANNEL_2);
 
     delay(2000);    
 
     ledcWrite(1,255-20);
-    ledcWrite(2,256);
+    //ledcWrite(2,256);
     #endif
-
-    //ledcWrite(3,256);
-    //ledcWrite(2,256-55);
-    //ledcWrite(1,256-55);
-    //ledcWrite(2,256-55);
 
     #ifdef WIFI_DEBUGGER
     scanWIFI();
     devConnection();
     #endif
-    
 
-   
- 
-
-    SetupCan();            
-      
-   
+    SetupCan();                  
 
     #ifdef ISMASTER
     spi_master_config();              
