@@ -18,7 +18,7 @@
 #include "driver/ledc.h"
 #include "driver/can.h"
 
-#define CAN_DLC 8
+#define CAN_DLC 7
 
 
 // Globals
@@ -27,7 +27,7 @@
 
 #define ESP_IDF_CAN
 
-#define MASTERDEVICE = true;
+//#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -37,7 +37,7 @@
 #else
 #define ISSLAVE
 #define SERVERPORT 25031
-#define WIFI_DEBUGGER
+//#define WIFI_DEBUGGER
 #warning "-COMPILING AS SLAVE-"
 #endif
 
@@ -60,8 +60,8 @@ spi_slave_interface_config_t scfg2;
 esp_err_t spi_state;
 
 /* Master vars */
-#define SPI_CHANNEL    HSPI_HOST
-#define SPI_CHANNEL2   VSPI_HOST
+//#define SPI_CHANNEL    HSPI_HOST
+//#define SPI_CHANNEL2   VSPI_HOST
 #define SPI_CLOCK      SPI_MASTER_FREQ_20M
 
 /*
@@ -195,7 +195,7 @@ void spi_master_config(void) {
     devcfg.flags |= SPI_DEVICE_HALFDUPLEX;
     
     // Initialize and enable SPI
-	  spi_state = spi_bus_initialize(SPI_CHANNEL, &buscfg, 1);
+	  spi_state = spi_bus_initialize(SPI_Controller, &buscfg, 1);
 	  switch (spi_state){
         case ESP_OK:
             //Serial.printf("SPI initialsation success!\n");
@@ -208,7 +208,7 @@ void spi_master_config(void) {
 
     }
 
-  spi_state = spi_bus_add_device(SPI_CHANNEL, &devcfg, &spi_handle);
+  spi_state = spi_bus_add_device(SPI_Controller, &devcfg, &spi_handle);
 
 }
 
@@ -236,7 +236,7 @@ void spi_master_config2(void) {
     
     
     // Initialize and enable SPI
-	  spi_state = spi_bus_initialize(SPI_CHANNEL2, &buscfg2, 2);
+	  spi_state = spi_bus_initialize(SPI_Controller2, &buscfg2, 2);
 	  switch (spi_state){
         case ESP_OK:
             if (client.connected()) { 
@@ -253,7 +253,7 @@ void spi_master_config2(void) {
             break;
     }
 
-  spi_state = spi_bus_add_device(SPI_CHANNEL2, &devcfg2, &spi_handle2);
+  spi_state = spi_bus_add_device(SPI_Controller2, &devcfg2, &spi_handle2);
 
 }
 
@@ -314,6 +314,40 @@ void spi_slave_config2() {
 }
 
 
+void ParseSPI(uint16_t *parsebuf,CAN_frame_t recvframe) {
+
+
+  GEAR_INFO = recvframe.data.u8[0];
+  
+  switch (recvframe.data.u8[1])
+  {
+  case 0x15:
+    GEAR_STATUS_DRIVE = true;
+    GEAR_INFO_DRIVE_LOGIC = 0x01;
+    return;
+  case 0x16:
+    GEAR_INFO_DRIVE_LOGIC = 0x01;
+    GEAR_STATUS_DRIVE = false;
+    return;
+  case 0x17:
+    GEAR_INFO_DRIVE_LOGIC = 0x02;
+    GEAR_STATUS_DRIVE = false;
+    return;
+  case 0x19:
+    GEAR_INFO_DRIVE_LOGIC = 0x00;
+    GEAR_INFO = 0x00;
+    GEAR_STATUS_DRIVE = false;
+    return;
+  }
+
+
+#ifdef WIFI_DEBUGGER
+  if (client.connected() && WifiConnected == true)
+  {
+    client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n", parsebuf[0], recvframe.data.u8[0], recvframe.data.u8[1], recvframe.data.u8[2], recvframe.data.u8[3], recvframe.data.u8[4], recvframe.data.u8[5], recvframe.data.u8[6], recvframe.data.u8[7]);
+  }
+#endif
+}
 
 void ReadSPISlave(void * param) {
     
@@ -325,7 +359,7 @@ void ReadSPISlave(void * param) {
   
         spi_state = spi_slave_transmit(SPI_Controller, &trans,20 / portTICK_PERIOD_MS);
         
-        switch (spi_state){
+        switch (spi_state) {
             case ESP_OK:
                 //client.printf("SPI trans success!\n");                                         
                 break;
@@ -337,65 +371,30 @@ void ReadSPISlave(void * param) {
                 //client.print("SPI trans failed!!!!!!!!!!!!!!!\n");
                 return;
         }
-
-          
-          
-        recvframe.MsgID=buffer[0];
-        recvframe.FIR.B.DLC=8;
+                  
+        recvframe.MsgID = buffer[0];
+        recvframe.FIR.B.DLC = 8;
         recvframe.FIR.B.FF = CAN_frame_std;
+        for (buffcounter = 0; buffcounter < 8; buffcounter++)
+          recvframe.data.u8[buffcounter] = buffer[buffcounter + 1];
 
-
-        if (buffer[0] == 0xAAAA) {
-          //client.print("SPI SENT NOTHING!!!!!!!!!!!!!!!\n");
-          return;
-        }
         if (buffer[0] > 0xFFF) {
           //client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
           return;
         }
-        for (buffcounter=0;buffcounter<7;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
         
-        //if (recvframe.MsgID > 4095) {return;}
-
-
-        
-        if (buffer[0] == 0x43F) {
-            //GEAR_INFO_ACTIVEGEAR=recvframe.data.u8[0];
-            GEAR_INFO=recvframe.data.u8[0];
-              
-              if (recvframe.data.u8[1] ==0x15) {
-                  GEAR_STATUS_DRIVE=true; 
-                  GEAR_INFO_DRIVE_LOGIC=0x01;
-                  
-              }
-
-              if (recvframe.data.u8[1] ==0x16) { /* NUETRAL*/
-                  GEAR_INFO_DRIVE_LOGIC=0x01;
-                  GEAR_STATUS_DRIVE=false; 
-              }
-
-              if (recvframe.data.u8[1] ==0x17) { /* REVERSE*/
-                  GEAR_INFO_DRIVE_LOGIC=0x02;
-                  GEAR_STATUS_DRIVE=false; 
-              }
-
-              if (recvframe.data.u8[1] ==0x18) { /* PARK*/
-                  GEAR_INFO_DRIVE_LOGIC=0x00;
-                  GEAR_INFO=0x00;
-                  GEAR_STATUS_DRIVE=false; 
-              }
-              ESP32Can.CANWriteFrame(&recvframe);
-
-              //return;
+        switch (buffer[0]) {
+          case 0xAAAA:
+            return;
+          case 0x43F:
+            ParseSPI(buffer,recvframe);
+            return;
         }
         
-        
-        #ifdef WIFI_DEBUGGER
-        //client.printf("MSGID: 0x%03x byte0: 0x%02x byte1: 0x%02x byte2: 0x%02x byte3: 0x%02x byte4: 0x%02x byte5: 0x%02x byte6: 0x%02x byte7:0x%02x\n",buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5],buffer[6],buffer[7],buffer[8]);
-          if (client.connected() ) {
-          client.printf("ID: 0x%03x b0: 0x%02x b1: 0x%02x b2: 0x%02x b3: 0x%02x b4: 0x%02x b5: 0x%02x b6: 0x%02x b7:0x%02x\n",buffer[0],recvframe.data.u8[0],recvframe.data.u8[1],recvframe.data.u8[2],recvframe.data.u8[3],recvframe.data.u8[4],recvframe.data.u8[5],recvframe.data.u8[6],recvframe.data.u8[7]);
-          }
-        #endif
+        ESP32Can.CANWriteFrame(&recvframe);
+
+               
+
 }
 
 
@@ -441,7 +440,7 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
 
           return;
         }
-        for (buffcounter =0;buffcounter<7;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
+        for (buffcounter =0;buffcounter<8;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
         
        ESP32Can.CANWriteFrame(&recvframe);
 
@@ -675,6 +674,7 @@ vTaskDelay(10 / portTICK_RATE_MS);
 }
 
 void robloop(void *params) {
+  
 
   while (1) {
 
@@ -955,7 +955,14 @@ void setup() {
     spi_master_config2();
     ESP32Can.CANInit(); 
     CanReady=true; 
-
+    xTaskCreatePinnedToCore(
+                    robloop,   /* Function to implement the task */
+                    "coreTask", /* Name of the task */
+                    10000,      /* Stack size in words */
+                    NULL,       /* Task input parameter */
+                    4,          /* Priority of the task */
+                    NULL,       /* Task handle. */
+                    0);  /* Core where the task should run */
 
     #endif
     
