@@ -27,7 +27,7 @@
 
 #define ESP_IDF_CAN
 
-//#define MASTERDEVICE = true;
+#define MASTERDEVICE = true;
 
 #ifdef MASTERDEVICE
 #define ISMASTER
@@ -602,7 +602,7 @@ void mReadCan() {
   if ( (CAN_cfg.rx_queue != NULL) && (uxQueueMessagesWaiting(CAN_cfg.rx_queue)) ) {
           //ledcWrite(1, 256);
            
-      if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 20 / portTICK_PERIOD_MS) == pdTRUE) {
+      if (xQueueReceive(CAN_cfg.rx_queue, &rx_frame, 15 / portTICK_PERIOD_MS) == pdTRUE) {
 	        canList[0][0] = rx_frame.MsgID;
           canList[0][1] = rx_frame.data.u8[0];
           canList[0][2] = rx_frame.data.u8[1];
