@@ -19,7 +19,7 @@
 #include "driver/can.h"
 
 #define CAN_DLC 7
-
+#define SPI_TIMEOUT 3
 
 // Globals
 //#define RANDOCAN = true
@@ -157,7 +157,7 @@ byte GEAR_INFO_ACTIVEGEAR=0x00;
 bool GEAR_STATUS_PARK = true;
 bool GEAR_STATUS_REVERSE = false; 
 bool GEAR_STATUS_DRIVE = false; 
-
+uint16_t VEHICLE_RPM=0;
 
 // the follow variables is a long because the time, measured in miliseconds,
 // will quickly become a bigger number than can be stored in an int.
@@ -165,13 +165,37 @@ unsigned long interval = 10;           // interval at which to send 0x43F (milli
 unsigned long interval_gearchange = 2000;
 
 
+
 unsigned long previousMillis_blinkled = 0;
 unsigned long blink_interval=250;
+
 bool ledState=false;
+
+
 
 byte current_gear_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
 byte gear_selector_matrix_std_46[] = {0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
 
+
+void sendARBID(uint32_t ARBID,byte m_byte0,byte m_byte1,byte m_byte2,byte m_byte3,byte m_byte4,byte m_byte5,byte m_byte6,byte m_byte7) {
+    CAN_frame_t tx_frame;
+    tx_frame.FIR.B.FF = CAN_frame_std;
+    tx_frame.MsgID = ARBID;
+    tx_frame.FIR.B.DLC = 8;
+    
+    tx_frame.data.u8[0] = m_byte0;
+    tx_frame.data.u8[1] = m_byte1;
+    tx_frame.data.u8[2] = m_byte2; 
+    tx_frame.data.u8[3] = m_byte3;
+    tx_frame.data.u8[4] = m_byte4;
+    tx_frame.data.u8[5] = m_byte5;
+    tx_frame.data.u8[6] = m_byte6;
+    tx_frame.data.u8[7] = m_byte7;
+
+    ESP32Can.CANWriteFrame(&tx_frame);
+    vTaskDelay(10 / portTICK_RATE_MS);   
+
+}
 
 void spi_master_config(void) {	
 	  buscfg.mosi_io_num=SPI_MOSI_GPIO;
@@ -314,12 +338,32 @@ void spi_slave_config2() {
 }
 
 
-void Parse43F(uint16_t *parsebuf,CAN_frame_t recvframe) {
+void Parse316(uint16_t *parsebuf,CAN_frame_t parseframe) {  /* with thanks to EliasKotlyar */
+	// Calculate and store RPM
+	uint8_t d1 = parseframe.data.u8[2];
+	uint8_t d2 = parseframe.data.u8[3];
+	VEHICLE_RPM = ((uint16_t) d2 << 8) | d1;
+	VEHICLE_RPM = VEHICLE_RPM / 6.4;
+}
+void Parse545(uint16_t *parsebuf,CAN_frame_t parseframe) { /* with thanks to EliasKotlyar */
+  	// Put RPM into the bytes:
+		//rpm = 7000;
+		uint16_t number = VEHICLE_RPM / 1000;
+		number = number * 16;
+		// Set Bits according to Bitmap
+		for(uint8_t n = 4; n < 7; n++){
+			uint8_t bit = (number >> n) & 1U;
+			parseframe.data.u8[3] ^= (-bit ^ parseframe.data.u8[3]) & (1UL << n);
+		}
+
+}
+
+void Parse43F(uint16_t *parsebuf,CAN_frame_t parseframe) {
 
 
-  GEAR_INFO = recvframe.data.u8[0];
+  GEAR_INFO = parseframe.data.u8[0];
   
-  switch (recvframe.data.u8[1])
+  switch (parseframe.data.u8[1])
   {
   case 0x15:
     GEAR_STATUS_DRIVE = true;
@@ -340,19 +384,19 @@ void Parse43F(uint16_t *parsebuf,CAN_frame_t recvframe) {
     break;
   }
 
-ESP32Can.CANWriteFrame(&recvframe);
+ESP32Can.CANWriteFrame(&parseframe);
 vTaskDelay(10);
 }
 
 void ReadSPISlave(void * param) {
     
     WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
-    CAN_frame_t recvframe;
+    CAN_frame_t txframe;
     memset(buffer, 0xAA, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
   
-        spi_state = spi_slave_transmit(SPI_Controller, &trans,15 / portTICK_PERIOD_MS);
+        spi_state = spi_slave_transmit(SPI_Controller, &trans,SPI_TIMEOUT / portTICK_PERIOD_MS);
         
         switch (spi_state) {
             case ESP_OK:
@@ -367,11 +411,13 @@ void ReadSPISlave(void * param) {
                 return;
         }
                   
-        recvframe.MsgID = buffer[0];
-        recvframe.FIR.B.DLC = 8;
-        recvframe.FIR.B.FF = CAN_frame_std;
-        for (buffcounter = 0; buffcounter < 7; buffcounter++)
-          recvframe.data.u8[buffcounter] = buffer[buffcounter + 1];
+        txframe.MsgID = buffer[0];
+        txframe.FIR.B.DLC = 8;
+        txframe.FIR.B.FF = CAN_frame_std;
+        
+        for (buffcounter = 0; buffcounter < 8; buffcounter++) {
+          txframe.data.u8[buffcounter] = buffer[buffcounter + 1];
+        }
 
         if (buffer[0] > 0xFFF) {
           //client.print("SPI SENT OUT OF BOUND ARBID!!!!!!!!!!!!!!!!!!!!!!\n");
@@ -389,28 +435,30 @@ if (DebugerConnected == true ) {
         switch (buffer[0]) {
           case 0xAAAA:
             return;
+          case 0xABAB:
+          return;
           case 0x43F:
-            Parse43F(buffer,recvframe);
+            Parse43F(buffer,txframe);
             return;
+         
         }
         
-        ESP32Can.CANWriteFrame(&recvframe);
-      
-vTaskDelay(10);
+        ESP32Can.CANWriteFrame(&txframe);
+        vTaskDelay(1);
 }
 
 
 void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
     
     WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
-    CAN_frame_t recvframe;
+    CAN_frame_t txframe;
     //WORD_ALIGNED_ATTR uint16_t buffer[TLEN];
     memset(buffer, 0xAB, TLEN); // fill buffer with some initial value
     trans.length=TLEN*16;
     trans.rx_buffer=buffer;
       
           
-        spi_state = spi_slave_transmit(spi_controller, &trans,15 / portTICK_PERIOD_MS);
+        spi_state = spi_slave_transmit(spi_controller, &trans,SPI_TIMEOUT / portTICK_PERIOD_MS);
         
         switch (spi_state){
             case ESP_OK:
@@ -426,9 +474,9 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
         }
         
      
-        recvframe.MsgID=buffer[0];
-        recvframe.FIR.B.DLC=8;
-        recvframe.FIR.B.FF = CAN_frame_std;
+        txframe.MsgID=buffer[0];
+        txframe.FIR.B.DLC=8;
+        txframe.FIR.B.FF = CAN_frame_std;
             
         if (buffer[0] == 0xABAB) {
           //client.printf("SPI SENT NOTHING!!!!!!!!!!!!!!! error was %d\n",spi_state);
@@ -442,9 +490,9 @@ void ReadSPISlave2(void * param,spi_host_device_t spi_controller) {
 
           return;
         }
-        for (buffcounter =0;buffcounter<7;buffcounter++) recvframe.data.u8[buffcounter]=buffer[buffcounter+1];
+        for (buffcounter =0;buffcounter<8;buffcounter++) txframe.data.u8[buffcounter]=buffer[buffcounter+1];
         
-       ESP32Can.CANWriteFrame(&recvframe);
+       ESP32Can.CANWriteFrame(&txframe);
 
         
         
@@ -761,7 +809,14 @@ void robloop(void *params) {
     GEAR_INFO_COUNTER = GEAR_INFO_COUNTER & 0x0F;
     
     ESP32Can.CANWriteFrame(&tx_frame);
-    vTaskDelay(5);
+    vTaskDelay(10 / portTICK_RATE_MS);
+
+    sendARBID(0x545,0x00,0xA3,0x45,0x00,0x4F,0x01,0x00,0x3E);
+    sendARBID(0x316,0x04,0x10,0x05,0x12,0x30,0x15,0x00,0xC);
+    sendARBID(0x329,0x11,0x6E,0xB7,0x01,0x00,0x00,0x01,0xFF);
+
+    
+  
   }
   vTaskDelay(5);
   }
