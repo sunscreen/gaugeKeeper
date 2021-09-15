@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +20,8 @@
 
 #define MAX_FILTERS 5
 
+#define PERFTEST
+#define DEBUGMODE
 
 typedef unsigned char       byte;
 
@@ -39,13 +40,13 @@ struct epoll_event ev, events[MAX_EVENTS];
 
 struct arbtest {
         int ID;
-        struct timeval tval_before;
         double lastsec;
         double lastusec;
 
 };
 
 struct arbtest mytests[3];
+int TESTCOUNT=0;
 
 /* SMGII GEAR DISPLAY
 0 = Clear Screen
@@ -212,60 +213,72 @@ void setupCanFilteration(int canSock) {
         struct can_filter rfilter[MAX_FILTERS];
 
         if (canSock == sCan0) {
-        rfilter[0].can_id   = 0x615;
+        rfilter[0].can_id   = 0x610;
         rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
         rfilter[1].can_id   = 0x613;
-        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
-        rfilter[2].can_id   = 0x610;
-        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
+        rfilter[2].can_id   = 0x615;
+        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         }
 
         if (canSock == sCan1) {
         rfilter[0].can_id   = 0x158;
-        rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         rfilter[1].can_id   = 0x15F;
-        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         rfilter[2].can_id   = 0x316;
-        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         rfilter[3].can_id   = 0x329;
-        rfilter[3].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[3].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         rfilter[4].can_id   = 0x43F;
-        rfilter[4].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[4].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         rfilter[5].can_id   = 0x545;
-        rfilter[5].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
-
+        rfilter[5].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         }
 
         setsockopt(canSock, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
 
 }
 
+void setupPermanceMonitor(int ARBID) {
+
+mytests[TESTCOUNT++].ID=ARBID;
+
+}
 
 void handleCan(int canSock) {
         struct can_frame frame;
         int nbytes;
         struct timeval end;
         int i;
+        int tstid=-1;
         nbytes = read(canSock, &frame, sizeof(struct can_frame));
 
         if (nbytes < 0) {
                 perror("Read");
                 return;
         }
+
+        #ifdef PERFTEST
         ioctl(canSock, SIOCGSTAMP, &end);
+        tstid = gettestid(frame.can_id);
+        if (tstid >=0) {
+        double delta_us = (double)(end.tv_usec - mytests[tstid].lastusec) / 1000000 + (double)(end.tv_sec - mytests[tstid].lastsec);
+        printf("id: 0x%03x e: %.3f ms\n", frame.can_id,delta_us);
+        mytests[tstid].lastsec=end.tv_sec;
+        mytests[tstid].lastusec=end.tv_usec;
+        }
+        #endif
 
-        int tstid = gettestid(frame.can_id);
-
+        #ifdef DEBUGMODE
         printf("0x%03X [%d] ",frame.can_id, frame.can_dlc);
 
         for (i = 0; i < frame.can_dlc; i++)
             printf("%02X ",frame.data[i]);
+        printf("\n");
+        #endif
 
-        double delta_us = (double)(end.tv_usec - mytests[tstid].lastusec) / 1000000 + (double)(end.tv_sec - mytests[tstid].lastsec);
 
-        printf("e: %.3f ms\n", delta_us);
-        mytests[tstid].lastsec=end.tv_sec;
-        mytests[tstid].lastusec=end.tv_usec;
 
         if (canSock == sCan0) {
         //printf("briding  can0 <-> can1\n");
@@ -276,6 +289,7 @@ void handleCan(int canSock) {
         }
 
         }
+
         if (canSock == sCan1) {
         //printf("briding  can1 <-> can0\n");
 
@@ -294,7 +308,7 @@ void epollsocket(int epollfd,int canSock) {
     ev.events = EPOLLIN;
     ev.data.fd = canSock;
         if (epoll_ctl(epollfd, EPOLL_CTL_ADD, canSock, &ev) == -1) {
-            perror("epoll_ctl: can0 socket");
+            perror("epoll_ctl: add socket");
             exit(EXIT_FAILURE);
         }
     printf("Added socket %d to ePoll.\n",canSock);
@@ -305,18 +319,17 @@ int main(int argc, char **argv)
 {
         int i;
 
-        //struct epoll_event ev, events[MAX_EVENTS];
-        int listen_sock, conn_sock, nfds, epollfd;
-
+        int nfds, epollfd;
         int nbytes;
         struct sockaddr_can addr;
         struct ifreq ifr;
         struct can_frame frame;
         struct timeval end;
         printf("CAN Filter 1.1\r\n");
-        mytests[0].ID=0x613;
-        mytests[1].ID=0x615;
-        mytests[2].ID=0x610;
+
+        setupPermanceMonitor(0x610);
+        setupPermanceMonitor(0x613);
+        setupPermanceMonitor(0x615);
 
         sCan0=setupCanInterface("can0");
         sCan1=setupCanInterface("can1");
@@ -335,10 +348,10 @@ int main(int argc, char **argv)
 
         nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
 
-        if (nfds == -1) {
+            if (nfds == -1) {
                 perror("epoll_wait");
                 exit(EXIT_FAILURE);
-        }
+            }
 
             for (int n = 0; n < nfds; ++n) {
                 handleCan(events[n].data.fd);
