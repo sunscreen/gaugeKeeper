@@ -16,7 +16,11 @@
 #include <linux/sockios.h>
 #include <stdbool.h>
 #include <sys/epoll.h>
+
 #define MAX_EVENTS 1000
+
+#define MAX_FILTERS 5
+
 
 typedef unsigned char       byte;
 
@@ -204,6 +208,39 @@ int s = -1;
 return s;
 }
 
+void setupCanFilteration(int canSock) {
+        struct can_filter rfilter[MAX_FILTERS];
+
+        if (canSock == sCan0) {
+        rfilter[0].can_id   = 0x615;
+        rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[1].can_id   = 0x613;
+        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[2].can_id   = 0x610;
+        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        }
+
+        if (canSock == sCan1) {
+        rfilter[0].can_id   = 0x158;
+        rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[1].can_id   = 0x15F;
+        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[2].can_id   = 0x316;
+        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[3].can_id   = 0x329;
+        rfilter[3].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[4].can_id   = 0x43F;
+        rfilter[4].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+        rfilter[5].can_id   = 0x545;
+        rfilter[5].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
+
+        }
+
+        setsockopt(canSock, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
+
+}
+
+
 void handleCan(int canSock) {
         struct can_frame frame;
         int nbytes;
@@ -234,7 +271,7 @@ void handleCan(int canSock) {
         //printf("briding  can0 <-> can1\n");
 
         if (write(sCan1, &frame, sizeof(struct can_frame)) != sizeof(struct can_frame)) {
-            perror("Write to Can1 Fail");
+            perror("Bridge Write to Can1 Fail");
             return;
         }
 
@@ -243,7 +280,7 @@ void handleCan(int canSock) {
         //printf("briding  can1 <-> can0\n");
 
         if (write(sCan0, &frame, sizeof(struct can_frame)) != sizeof(struct can_frame)) {
-            perror("Write to Can1 Fail");
+            perror("Bridge Write to Can0 Fail");
             return;
         }
 
@@ -283,17 +320,6 @@ int main(int argc, char **argv)
 
         sCan0=setupCanInterface("can0");
         sCan1=setupCanInterface("can1");
-
-        struct can_filter rfilter[3];
-
-        rfilter[0].can_id   = 0x615;
-        rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
-        rfilter[1].can_id   = 0x613;
-        rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
-        rfilter[2].can_id   = 0x610;
-        rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_RTR_FLAG | CAN_EFF_MASK);
-
-        //setsockopt(sCan0, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
 
 
         epollfd = epoll_create1(0);
