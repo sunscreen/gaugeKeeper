@@ -18,7 +18,7 @@
 
 #define MAX_EVENTS 1000
 
-#define MAX_FILTERS 5
+#define MAX_FILTERS 7
 
 #define PERFTEST
 #define DEBUGMODE
@@ -35,6 +35,8 @@ bool GEAR_STATUS_REVERSE = false;
 bool GEAR_STATUS_DRIVE = false;
 bool GEAR_ACTIVE=0x00;
 
+uint16_t VEHICLE_RPM=0;
+
 int sCan0, sCan1;
 struct epoll_event ev, events[MAX_EVENTS];
 
@@ -47,6 +49,28 @@ struct arbtest {
 
 struct arbtest mytests[3];
 int TESTCOUNT=0;
+
+
+void handle316(struct can_frame * parseframe) {  /* with thanks to EliasKotlyar */
+    // Calculate and store RPM
+    uint8_t d1 = parseframe->data[2];
+    uint8_t d2 = parseframe->data[3];
+    VEHICLE_RPM = ((uint16_t) d2 << 8) | d1;
+    VEHICLE_RPM = VEHICLE_RPM / 6.4;
+}
+
+void handle545(struct can_frame * parseframe) { /* with thanks to EliasKotlyar */
+// Put RPM into the bytes:
+//rpm = 7000;
+        uint16_t number = VEHICLE_RPM / 1000;
+        number = number * 16;
+        // Set Bits according to Bitmap
+        for(uint8_t n = 4; n < 7; n++){
+            uint8_t bit = (number >> n) & 1U;
+            parseframe->data[3] ^= (-bit ^ parseframe->data[3]) & (1UL << n);
+        }
+}
+
 
 /* SMGII GEAR DISPLAY
 0 = Clear Screen
@@ -74,14 +98,14 @@ int TESTCOUNT=0;
 */
 
 
-void handle43F(struct can_frame rxframe) {
-    struct can_frame txframe;
+void handle43F(struct can_frame *rxframe) {
+    //struct can_frame txframe;
 
 
-    GEAR_INFO=rxframe.data[1];
+    GEAR_INFO=rxframe->data[1];
 
-    if (GEAR_ACTIVE != rxframe.data[0] && rxframe.data[0] != 0x00 && rxframe.data[0] != 0x07) {
-    switch (rxframe.data[0]) { /* ACTIVE GEAR*/
+    if (GEAR_ACTIVE != rxframe->data[0] && rxframe->data[0] != 0x00 && rxframe->data[0] != 0x07) {
+    switch (rxframe->data[0]) { /* ACTIVE GEAR*/
         case 0x01:
         GEAR_INFO=0x01;
         break;
@@ -104,11 +128,14 @@ void handle43F(struct can_frame rxframe) {
 
     }
 
-    GEAR_ACTIVE=rxframe.data[0];
+    GEAR_ACTIVE=rxframe->data[0];
 
-    switch (rxframe.data[1]) { /* SELECTOR POSITION */
+    switch (rxframe->data[1]) { /* SELECTOR POSITION */
         case 0x15:    /* DRIVE */
         GEAR_INFO=0x05;
+        if (rxframe->data[0] != 0x00) {
+            GEAR_INFO=rxframe->data[0];
+        }
         break;
         case 0x16:    /* NUETRAL */
         GEAR_INFO=0x06;
@@ -155,14 +182,14 @@ void handle43F(struct can_frame rxframe) {
 
     //Serial.println("");
 
-    txframe.data[0] = 0;
-    txframe.data[1] = GEAR_INFO;
-    txframe.data[2] = GEAR_INFO_DRIVE_LOGIC;
-    txframe.data[3] = GEAR_INFO_CHKSM;
-    txframe.data[4] = 0x00;
-    txframe.data[5] = 0x00;
-    txframe.data[6] = 0x00;
-    txframe.data[7] = 0x00;
+    rxframe->data[0] = 0;
+    rxframe->data[1] = GEAR_INFO;
+    rxframe->data[2] = GEAR_INFO_DRIVE_LOGIC;
+    rxframe->data[3] = GEAR_INFO_CHKSM;
+    rxframe->data[4] = 0x00;
+    rxframe->data[5] = 0x00;
+    rxframe->data[6] = 0x00;
+    rxframe->data[7] = 0x00;
 
     GEAR_INFO_COUNTER ++;
     GEAR_INFO_COUNTER = GEAR_INFO_COUNTER & 0x0F;
@@ -170,7 +197,7 @@ void handle43F(struct can_frame rxframe) {
 
 }
 
-int gettestid(int checkarb) {
+inline int gettestid(int checkarb) {
 int x=0;
     for (x = 0;x <= 2;x++) {
 
@@ -221,19 +248,31 @@ void setupCanFilteration(int canSock) {
         rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         }
 
+
         if (canSock == sCan1) {
-        rfilter[0].can_id   = 0x158;
+        rfilter[0].can_id   = 0x153;
         rfilter[0].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
-        rfilter[1].can_id   = 0x15F;
+
+        rfilter[1].can_id   = 0x1F0;
         rfilter[1].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
-        rfilter[2].can_id   = 0x316;
+
+        rfilter[2].can_id   = 0x1F3;
         rfilter[2].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
-        rfilter[3].can_id   = 0x329;
+
+        rfilter[3].can_id   = 0x1F5;
         rfilter[3].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
-        rfilter[4].can_id   = 0x43F;
+
+        rfilter[4].can_id   = 0x316;
         rfilter[4].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
-        rfilter[5].can_id   = 0x545;
+
+        rfilter[5].can_id   = 0x329;
         rfilter[5].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
+
+        rfilter[6].can_id   = 0x43F;
+        rfilter[6].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
+
+        rfilter[7].can_id   = 0x545;
+        rfilter[7].can_mask = (CAN_EFF_FLAG | CAN_EFF_MASK);
         }
 
         setsockopt(canSock, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
@@ -248,9 +287,9 @@ mytests[TESTCOUNT++].ID=ARBID;
 
 void handleCan(int canSock) {
         struct can_frame frame;
-        int nbytes;
         struct timeval end;
-        int i;
+        int nbytes=0;
+        int i=0;
         int tstid=-1;
         nbytes = read(canSock, &frame, sizeof(struct can_frame));
 
@@ -279,6 +318,17 @@ void handleCan(int canSock) {
         #endif
 
 
+        switch (frame.can_id) {
+        case 0x43F:
+        handle43F(&frame);
+        break;
+        case 0x316:
+        handle316(&frame);
+        break;
+        case 0x545:
+        handle545(&frame);
+        break;
+        }
 
         if (canSock == sCan0) {
         //printf("briding  can0 <-> can1\n");
@@ -299,7 +349,7 @@ void handleCan(int canSock) {
         }
 
         }
-        usleep(1);
+        //usleep(0);
 
 }
 
@@ -318,7 +368,6 @@ void epollsocket(int epollfd,int canSock) {
 int main(int argc, char **argv)
 {
         int i;
-
         int nfds, epollfd;
         int nbytes;
         struct sockaddr_can addr;
