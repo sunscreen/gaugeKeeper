@@ -8,10 +8,6 @@ drwxr-xr-x 5 root root 4096 Sep 11 20:23 ..
 -rw-r--r-- 1 root root   54 Sep 15 11:23 80-can.network
 -rw-r--r-- 1 root root   53 Sep 15 11:25 81-can.network
 lrwxrwxrwx 1 root root    9 May  7 15:42 99-default.link -> /dev/null
-root@raspberrypi:/home/pi#
-
-
-
 
 root@raspberrypi:/home/pi# cat /etc/systemd/network/80-can.network
 [Match]
@@ -25,9 +21,7 @@ root@raspberrypi:/home/pi# cat /etc/systemd/network/81-can.network
 Name=can1
 [CAN]
 BitRate=500K
-RestartSec=100msroot@raspberrypi:/home/pi#
-
-
+RestartSec=100ms
 
 root@raspberrypi:/home/pi# cat /etc/systemd/system/canfilter.service
 [Unit]
