@@ -1,24 +1,23 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <stdbool.h>
+#include <time.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include <sys/epoll.h>
 #include <linux/can.h>
 #include <linux/can/raw.h>
-#include <sys/time.h>
-#include <time.h>
-#include <sys/ioctl.h>
 #include <linux/sockios.h>
-#include <stdbool.h>
-#include <sys/epoll.h>
+
 
 #define MAX_EVENTS 1000
-
-#define MAX_FILTERS 7
+#define MAX_FILTERS (7 + 1)
 
 #define PERFTEST
 #define DEBUGMODE
@@ -146,9 +145,7 @@ void handle43F(struct can_frame *rxframe) {
         case 0x18:    /* PARK */
         GEAR_INFO=0; /* CLEAR SCREEN */
         break;
-
     }
-
 
     //Serial.print("GEAR_INFO         0x");
     //Serial.println(GEAR_INFO,HEX);
@@ -158,7 +155,6 @@ void handle43F(struct can_frame *rxframe) {
 
     //Serial.print("GEAR_INFO_CHKSM   0x");
     //Serial.println(GEAR_INFO_CHKSM,HEX);
-
 
     GEAR_INFO_CHKSM = GEAR_INFO_COUNTER ^ GEAR_INFO;
     //Serial.print("xor               0x");
@@ -179,8 +175,6 @@ void handle43F(struct can_frame *rxframe) {
     GEAR_INFO_CHKSM = GEAR_INFO_CHKSM | GEAR_INFO_COUNTER;
     //Serial.print("or counter        0x");
     //Serial.println(GEAR_INFO_CHKSM,HEX);
-
-    //Serial.println("");
 
     rxframe->data[0] = 0;
     rxframe->data[1] = GEAR_INFO;
@@ -310,7 +304,7 @@ void handleCan(int canSock) {
         #endif
 
         #ifdef DEBUGMODE
-        printf("0x%03X [%d] ",frame.can_id, frame.can_dlc);
+        printf("0x%03X %d ",frame.can_id, frame.can_dlc);
 
         for (i = 0; i < frame.can_dlc; i++)
             printf("%02X ",frame.data[i]);
@@ -366,13 +360,7 @@ void epollsocket(int epollfd,int canSock) {
 
 int main(int argc, char **argv)
 {
-        int i;
         int nfds, epollfd;
-        int nbytes;
-        struct sockaddr_can addr;
-        struct ifreq ifr;
-        struct can_frame frame;
-        struct timeval end;
         printf("CAN Filter 1.1\r\n");
 
         setupPerformanceMonitor(0x610);
