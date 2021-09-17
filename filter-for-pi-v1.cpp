@@ -279,7 +279,7 @@ void setupCanFilteration(int canSock) {
 
 }
 
-void setupPermanceMonitor(int ARBID) {
+void setupPerformanceMonitor(int ARBID) {
 
 mytests[TESTCOUNT++].ID=ARBID;
 
@@ -318,6 +318,8 @@ void handleCan(int canSock) {
         #endif
 
 
+        //printf("briding  can1 <-> can0\n");
+
         switch (frame.can_id) {
         case 0x43F:
         handle43F(&frame);
@@ -330,24 +332,21 @@ void handleCan(int canSock) {
         break;
         }
 
-        if (canSock == sCan0) {
-        //printf("briding  can0 <-> can1\n");
 
+        if (canSock == sCan0) {
         if (write(sCan1, &frame, sizeof(struct can_frame)) != sizeof(struct can_frame)) {
             perror("Bridge Write to Can1 Fail");
             return;
         }
-
+        return;
         }
 
         if (canSock == sCan1) {
-        //printf("briding  can1 <-> can0\n");
-
         if (write(sCan0, &frame, sizeof(struct can_frame)) != sizeof(struct can_frame)) {
             perror("Bridge Write to Can0 Fail");
             return;
         }
-
+        return;
         }
         //usleep(0);
 
@@ -376,9 +375,9 @@ int main(int argc, char **argv)
         struct timeval end;
         printf("CAN Filter 1.1\r\n");
 
-        setupPermanceMonitor(0x610);
-        setupPermanceMonitor(0x613);
-        setupPermanceMonitor(0x615);
+        setupPerformanceMonitor(0x610);
+        setupPerformanceMonitor(0x613);
+        setupPerformanceMonitor(0x615);
 
         sCan0=setupCanInterface("can0");
         sCan1=setupCanInterface("can1");
