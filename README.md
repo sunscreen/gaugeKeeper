@@ -1,5 +1,11 @@
 # gaugeKeeper
 New Pican version.
+
+```
+Driver Used: https://github.com/polybassa/PICAN-DUO-FD-Raspberry-Pi
+```
+
+
 ```
 root@raspberrypi:/home/pi# ls -al /etc/systemd/network/
 total 16
